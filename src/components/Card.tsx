@@ -16,10 +16,10 @@ export interface CardProps {
 }
 
 const baseClassName =
-  "group rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-inner transition hover:border-emerald-400/70 hover:shadow-emerald-400/10";
+  "group rounded-2xl border border-slate-700 bg-slate-900/70 p-6 shadow-inner transition-all duration-200 ease-out hover:border-slate-500 hover:shadow-lg";
 
 const titleBaseClassName =
-  "mb-3 text-xl font-semibold text-slate-50 transition group-hover:text-emerald-300";
+  "mb-3 text-xl font-semibold text-slate-50 transition group-hover:text-slate-100";
 
 const contentBaseClassName = "space-y-3 text-sm text-slate-400";
 
@@ -48,7 +48,7 @@ export function Card({
       : description;
 
   const interactiveClassName = onClick
-    ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40"
+    ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40 hover:border-emerald-400/70 hover:shadow-emerald-400/15 hover:scale-[1.02]"
     : undefined;
   const activeClassName = isActive
     ? "border-emerald-300 ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-slate-950 shadow-lg shadow-emerald-400/20 bg-slate-900/60"

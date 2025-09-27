@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { JSX } from "react";
-import type { ServicesInstance } from "../../types/infrastructure";
+import type { ServicesInstance, ServiceProfileKey, ServiceStatus } from "../../types/infrastructure";
+import { profileLabels } from "../../features/infrastructure/config";
 
 export interface ActionConfirmationModalProps {
   isOpen: boolean;
@@ -57,9 +58,33 @@ export function ActionConfirmationModal({
   const actionVerb = action === "start" ? "Starting" : "Stopping";
   const actionPastTense = action === "start" ? "started" : "stopped";
 
+  const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
+    const raw = instance.status?.toLowerCase();
+    if (raw === "degraded") return "degraded";
+    if (raw === "restarting") return "restarting";
+    if (raw === "stopped") return "degraded";
+    if ((raw === "running" || raw === undefined) && instance.uptime <= 0) return "restarting";
+    return "running";
+  };
+
+  const statusBadgeClass = (status: ServiceStatus): string => {
+    if (status === "running") {
+      return "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20";
+    }
+    if (status === "restarting") {
+      return "bg-amber-400/10 text-amber-300 border border-amber-400/20";
+    }
+    return "bg-rose-400/10 text-rose-300 border border-rose-400/20";
+  };
+
+  const formatProfileLabel = (profile: ServiceProfileKey): string => 
+    profileLabels[profile] ?? profile.toUpperCase();
+
   // Group instances by service for better display
   const instancesByService = instances.reduce((acc, instance) => {
-    const serviceName = serviceNames.find(name => instance.id.includes(name)) || 'Unknown Service';
+    const serviceName = instance.serviceName 
+      || serviceNames.find(name => instance.id.includes(name)) 
+      || "Unknown Service";
     if (!acc[serviceName]) {
       acc[serviceName] = [];
     }
@@ -107,25 +132,31 @@ export function ActionConfirmationModal({
                     <div key={serviceName} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
                       <h3 className="font-medium text-slate-200 mb-3">{serviceName}</h3>
                       <div className="space-y-2">
-                        {serviceInstances.map((instance) => (
-                          <div key={instance.id} className="flex items-center justify-between rounded border border-slate-800 bg-slate-900/50 px-3 py-2">
-                            <div className="flex items-center gap-3">
-                              <code className="text-xs text-slate-300">{instance.id}</code>
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                instance.status?.toLowerCase() === "running" 
-                                  ? "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20"
-                                  : "bg-slate-400/10 text-slate-400 border border-slate-400/20"
-                              }`}>
-                                {instance.status || "Unknown"}
-                              </span>
+                        {serviceInstances.map((instance) => {
+                          const status = normaliseStatus(instance);
+                          const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+                          const profileLabel = formatProfileLabel(instance.profile);
+                          return (
+                            <div key={instance.id} className="space-y-1 rounded border border-slate-800 bg-slate-900/50 px-3 py-2">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-slate-200">
+                                  {instance.serviceName || serviceName} - {profileLabel} - {instance.machineName}
+                                </span>
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(status)}`}>
+                                  {statusLabel}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                                <code className="text-slate-400">{instance.id}</code>
+                                {instance.uptime > 0 && (
+                                  <span>
+                                    Uptime: {Math.floor(instance.uptime / 3600)}h {Math.floor((instance.uptime % 3600) / 60)}m
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            {instance.uptime > 0 && (
-                              <span className="text-xs text-slate-500">
-                                Uptime: {Math.floor(instance.uptime / 3600)}h {Math.floor((instance.uptime % 3600) / 60)}m
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
