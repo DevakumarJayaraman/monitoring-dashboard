@@ -31,8 +31,20 @@ function getPreferredTheme(): ThemeMode {
 
 function applyThemeClass(mode: ThemeMode) {
   if (typeof document === "undefined") return;
-  document.body.classList.remove("theme-dark", "theme-light");
-  document.body.classList.add(`theme-${mode}`);
+  
+  const root = document.documentElement;
+  const body = document.body;
+  
+  // Remove old theme classes
+  root.classList.remove("theme-dark", "theme-light", "dark", "light");
+  body.classList.remove("theme-dark", "theme-light", "dark", "light");
+  
+  // Add new theme classes to both root and body
+  root.classList.add(`theme-${mode}`, mode);
+  body.classList.add(`theme-${mode}`, mode);
+  
+  // Set data attribute for additional styling options
+  root.setAttribute('data-theme', mode);
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }): JSX.Element {

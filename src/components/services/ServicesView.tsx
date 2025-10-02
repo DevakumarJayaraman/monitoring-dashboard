@@ -5,7 +5,6 @@ import { Card } from "../Card";
 import { ServiceStatusBadge } from "../shared/StatusIndicators";
 import { ProfileSelector } from "./ProfileSelector";
 import { ServicesSummary } from "./ServicesSummary";
-import { ServiceStatusBreakdown } from "./ServiceStatusBreakdown";
 import { ActionConfirmationModal, type ActionResult } from "./ActionConfirmationModal";
 import { ServiceGlyph, profileLabels } from "../../features/infrastructure/config";
 import {
@@ -477,10 +476,6 @@ export function ServicesView(): JSX.Element {
           </div>
         </div>
 
-        <ServiceStatusBreakdown 
-          servicesInstances={ServicesInstances}
-          activeProfiles={activeProfiles}
-        />
       </div>
       <div className="space-y-6">
         {filteredServices.map((service) => {
