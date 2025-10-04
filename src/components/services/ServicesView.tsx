@@ -9,7 +9,6 @@ import { ActionConfirmationModal, type ActionResult } from "./ActionConfirmation
 import { ServiceGlyph, profileLabels } from "../../features/infrastructure/config";
 import {
   formatUptime,
-  InfraDetails,
   ServicesInstances,
   serviceSummaryByName,
 } from "../../features/infrastructure/data";
@@ -66,14 +65,6 @@ export function ServicesView(): JSX.Element {
     () => new Map<string, string>(Object.entries(serviceSummaryByName)),
     []
   );
-
-  const infraByMachine = useMemo(() => {
-    const map = new Map<string, { datacenter: string }>();
-    InfraDetails.forEach((detail) => {
-      map.set(detail.machineName, { datacenter: detail.datacenter });
-    });
-    return map;
-  }, []);
 
   const serviceVariantsByName = useMemo(() => {
     const map = new Map<string, Map<NonAllProfile, ServiceVariant>>();
@@ -168,9 +159,14 @@ export function ServicesView(): JSX.Element {
     // Show services for selected specific profiles
     const aggregate = new Map<string, { summary: string; instances: ServicesInstance[]; profiles: Set<ServiceProfileKey> }>();
     
-    activeProfiles.forEach(profile => {
-      const profileMap = servicesByProfile.get(profile) ?? new Map();
-      profileMap.forEach((variant, serviceName) => {
+    // Filter out "all" from activeProfiles if it's mixed with other profiles
+    const specificProfiles = activeProfiles.filter(p => p !== "all");
+    
+    specificProfiles.forEach(profile => {
+      const servicesInProfile = servicesByProfile.get(profile);
+      if (!servicesInProfile) return;
+      
+      servicesInProfile.forEach((variant, serviceName) => {
         if (!aggregate.has(serviceName)) {
           aggregate.set(serviceName, {
             summary: variant.summary,
@@ -188,7 +184,7 @@ export function ServicesView(): JSX.Element {
       .map(([serviceName, data]) => ({
         name: serviceName,
         summary: data.summary,
-        profile: activeProfiles.length === 1 ? activeProfiles[0] : "all" as ServiceProfileKey,
+        profile: specificProfiles.length === 1 ? specificProfiles[0] : "all" as ServiceProfileKey,
         instances: [...data.instances].sort((a, b) => a.id.localeCompare(b.id)),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -253,12 +249,6 @@ export function ServicesView(): JSX.Element {
     if (running === 0) return "text-rose-200 bg-rose-500/10 border border-rose-400/40";
     return "text-amber-200 bg-amber-500/10 border border-amber-400/40";
   };
-
-  // Calculate global selection state
-  const totalSelectedInstances = Object.values(selectedInstances).reduce(
-    (total, instances) => total + instances.length, 
-    0
-  );
 
   const handleServiceSelectionAction = (serviceKey: string, action: "start" | "stop") => {
     const service = filteredServices.find(s => `${s.profile}-${s.name}` === serviceKey);
@@ -376,8 +366,6 @@ export function ServicesView(): JSX.Element {
     return total + service.instances.filter(instance => normaliseStatus(instance) === "running").length;
   }, 0);
   const stoppedVisibleInstances = totalVisibleInstances - runningVisibleInstances;
-
-  const resultsLabel = `${filteredServices.length} of ${servicesForActiveProfile.length}`;
   
   const selectedService = selectedServiceKey 
     ? filteredServices.find(s => `${s.profile}-${s.name}` === selectedServiceKey)
@@ -407,9 +395,6 @@ export function ServicesView(): JSX.Element {
       
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <ProfileSelector value={activeProfiles} onChange={setActiveProfiles} />
-        <span className="text-xs text-slate-500 md:text-right">
-          Showing {resultsLabel}
-        </span>
       </div>
       
       {/* Search Services - Only visible when profile selected */}
@@ -457,15 +442,6 @@ export function ServicesView(): JSX.Element {
                 ■ Stop All ({runningVisibleInstances})
               </button>
             </div>
-            {totalSelectedInstances > 0 && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-full border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
-                onClick={() => setSelectedInstances({})}
-              >
-                Reset Selection ({totalSelectedInstances})
-              </button>
-            )}
           </div>
         </div>
 
@@ -563,7 +539,7 @@ export function ServicesView(): JSX.Element {
         </div>
         
         {/* Right Side - Instance Details */}
-        <div className="space-y-6 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)]">
+        <div className="space-y-6">
           {selectedService ? (
             <Card
               title={`${selectedService.name} - Instance Details`}
@@ -651,82 +627,138 @@ export function ServicesView(): JSX.Element {
                     })()}
                   </div>
                   
-                  <div className="space-y-3 max-h-[calc(100vh-28rem)] overflow-y-auto -mr-6 pr-6">
-                    {selectedService.instances.map((instance) => {
-                      const machineMeta = infraByMachine.get(instance.machineName);
-                      const status = normaliseStatus(instance);
-                      const selection = selectedInstances[selectedServiceKey!] ?? [];
-                      const isInstanceSelected = selection.includes(instance.id);
+                  <div className="space-y-4">
+                    {(() => {
+                      // Group instances by profile
+                      const instancesByProfile = new Map<string, ServicesInstance[]>();
+                      selectedService.instances.forEach((instance) => {
+                        const profile = instance.profile;
+                        if (!instancesByProfile.has(profile)) {
+                          instancesByProfile.set(profile, []);
+                        }
+                        instancesByProfile.get(profile)!.push(instance);
+                      });
                       
-                      return (
-                        <div
-                          key={instance.id}
-                          className={`group rounded-lg border bg-slate-900/60 px-3 py-2 transition cursor-pointer ${
-                            isInstanceSelected
-                              ? "border-emerald-400/60 ring-1 ring-emerald-400/30"
-                              : "border-slate-800 hover:border-emerald-300/40"
-                          }`}
-                          role="checkbox"
-                          aria-checked={isInstanceSelected}
-                          tabIndex={0}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toggleInstanceSelected(selectedServiceKey!, instance.id);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === " " || event.key === "Enter") {
-                              event.preventDefault();
-                              toggleInstanceSelected(selectedServiceKey!, instance.id);
-                            }
-                          }}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="space-y-1 flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                                <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 text-[10px]">
-                                  {profileLabels[instance.profile]}
+                      // Sort profiles: "all" first, then alphabetically
+                      const sortedProfiles = Array.from(instancesByProfile.keys()).sort((a, b) => {
+                        if (a === "all") return -1;
+                        if (b === "all") return 1;
+                        return profileLabels[a].localeCompare(profileLabels[b]);
+                      });
+                      
+                      return sortedProfiles.map((profile) => {
+                        const instances = instancesByProfile.get(profile)!;
+                        const profileStats = getStatusCounts(instances);
+                        
+                        return (
+                          <div key={profile} className="rounded-xl border border-slate-700 bg-slate-900/40 p-4">
+                            {/* Profile Header */}
+                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-emerald-200 text-xs font-medium">
+                                  {profileLabels[profile]}
                                 </span>
-                                <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
-                                  v{instance.version}
+                                <span className="text-xs text-slate-400">
+                                  {instances.length} {instances.length === 1 ? 'instance' : 'instances'}
                                 </span>
                               </div>
-                              <div className="text-sm font-medium text-slate-100 truncate">
-                                {instance.machineName}
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                Port {instance.Port} · {machineMeta?.datacenter ?? "—"}
-                              </div>
+                              <span className="text-xs text-slate-400">
+                                Running {profileStats.running}/{instances.length}
+                              </span>
                             </div>
-                            <ServiceStatusBadge status={status} />
-                          </div>
-                          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
-                            <span className="truncate">Uptime {formatUptime(instance.uptime)}</span>
-                            <div className="flex gap-2 text-xs font-semibold text-emerald-300 flex-shrink-0">
-                              <a
-                                className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
-                                href={instance.logURL}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(event) => event.stopPropagation()}
-                                title="View Logs"
-                              >
-                                Logs ↗
-                              </a>
-                              <a
-                                className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
-                                href={instance.metricsURL}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(event) => event.stopPropagation()}
-                                title="View Metrics"
-                              >
-                                Metrics ↗
-                              </a>
+                            
+                            {/* Instances in this profile */}
+                            <div className="space-y-2">
+                              {instances.map((instance) => {
+                                const status = normaliseStatus(instance);
+                                const selection = selectedInstances[selectedServiceKey!] ?? [];
+                                const isInstanceSelected = selection.includes(instance.id);
+                                
+                                return (
+                                  <div
+                                    key={instance.id}
+                                    className={`group rounded-lg border bg-slate-900/60 px-3 py-2 transition cursor-pointer ${
+                                      isInstanceSelected
+                                        ? "border-emerald-400/60 ring-1 ring-emerald-400/30"
+                                        : "border-slate-800 hover:border-emerald-300/40"
+                                    }`}
+                                    role="checkbox"
+                                    aria-checked={isInstanceSelected}
+                                    tabIndex={0}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      toggleInstanceSelected(selectedServiceKey!, instance.id);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === " " || event.key === "Enter") {
+                                        event.preventDefault();
+                                        toggleInstanceSelected(selectedServiceKey!, instance.id);
+                                      }
+                                    }}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="space-y-1 flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 text-xs">
+                                          <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
+                                            v{instance.version}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <div className="text-sm font-medium text-slate-100">
+                                            <span className="font-semibold">{instance.machineName}</span>
+                                            <span className="text-slate-500">:{instance.Port}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="inline-flex items-center justify-center w-5 h-5 rounded transition hover:bg-slate-800"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              // Health check action - could open modal or navigate
+                                              window.open(instance.metricsURL, '_blank');
+                                            }}
+                                            title="View Health Check"
+                                          >
+                                            <svg className="w-4 h-4 text-emerald-400 hover:text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <ServiceStatusBadge status={status} />
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
+                                      <span className="truncate">Uptime {formatUptime(instance.uptime)}</span>
+                                      <div className="flex gap-2 text-xs font-semibold text-emerald-300 flex-shrink-0">
+                                        <a
+                                          className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                          href={instance.logURL}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          onClick={(event) => event.stopPropagation()}
+                                          title="View Logs"
+                                        >
+                                          Logs ↗
+                                        </a>
+                                        <a
+                                          className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                          href={instance.metricsURL}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          onClick={(event) => event.stopPropagation()}
+                                          title="View Metrics"
+                                        >
+                                          Metrics ↗
+                                        </a>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
             </Card>
           ) : (
