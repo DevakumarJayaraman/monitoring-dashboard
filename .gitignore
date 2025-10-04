@@ -75,3 +75,6 @@ logs
 
 # Storybook build outputs
 storybook-static
+
+*/target/*
+*/bin/*
