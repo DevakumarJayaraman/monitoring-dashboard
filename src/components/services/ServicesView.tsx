@@ -42,10 +42,10 @@ const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
 };
 
 export function ServicesView(): JSX.Element {
-  const [activeProfiles, setActiveProfiles] = useState<ServiceProfileKey[]>(["all"]);
-  const [expandedServices, setExpandedServices] = useState<Record<string, boolean>>({});
+  const [activeProfiles, setActiveProfiles] = useState<ServiceProfileKey[]>([]);
   const [selectedInstances, setSelectedInstances] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedServiceKey, setSelectedServiceKey] = useState<string | null>(null);
   
   // Modal state
   const [modalState, setModalState] = useState<{
@@ -204,19 +204,7 @@ export function ServicesView(): JSX.Element {
 
   const toggleServiceExpanded = (profile: ServiceProfileKey | "all", serviceName: string) => {
     const key = `${profile}-${serviceName}`;
-    setExpandedServices((state) => {
-      const isCurrentlyExpanded = state[key];
-      
-      if (isCurrentlyExpanded) {
-        // If collapsing, just remove this service
-        const newState = { ...state };
-        delete newState[key];
-        return newState;
-      } else {
-        // If expanding, collapse all others and expand only this one
-        return { [key]: true };
-      }
-    });
+    setSelectedServiceKey(key === selectedServiceKey ? null : key);
   };
 
   const toggleInstanceSelected = (serviceKey: string, instanceId: string) => {
@@ -240,7 +228,7 @@ export function ServicesView(): JSX.Element {
   };
 
   useEffect(() => {
-    setExpandedServices({});
+    setSelectedServiceKey(null);
   }, [activeProfiles]);
 
   const getServiceProfileStats = useCallback(
@@ -390,6 +378,10 @@ export function ServicesView(): JSX.Element {
   const stoppedVisibleInstances = totalVisibleInstances - runningVisibleInstances;
 
   const resultsLabel = `${filteredServices.length} of ${servicesForActiveProfile.length}`;
+  
+  const selectedService = selectedServiceKey 
+    ? filteredServices.find(s => `${s.profile}-${s.name}` === selectedServiceKey)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -420,7 +412,8 @@ export function ServicesView(): JSX.Element {
         </span>
       </div>
       
-      {/* Search Services */}
+      {/* Search Services - Only visible when profile selected */}
+      {activeProfiles.length > 0 && (
       <div className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <label className="flex flex-col gap-2 text-sm text-slate-300 sm:w-80">
@@ -477,10 +470,16 @@ export function ServicesView(): JSX.Element {
         </div>
 
       </div>
-      <div className="space-y-6">
-        {filteredServices.map((service) => {
+      )}
+      
+      {/* Split Screen Layout */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        {/* Left Side - Service Cards */}
+        <div className="space-y-6">
+          {activeProfiles.length > 0 ? (
+            filteredServices.map((service) => {
           const serviceKey = `${service.profile}-${service.name}`;
-          const isExpanded = Boolean(expandedServices[serviceKey]);
+          const isSelected = selectedServiceKey === serviceKey;
           const statusCounts = getStatusCounts(service.instances);
           const totalInstances = service.instances.length;
           const perProfileStats = getServiceProfileStats(service.name);
@@ -488,99 +487,23 @@ export function ServicesView(): JSX.Element {
             service.profile !== "all"
               ? perProfileStats.find((stat) => stat.profileKey === (service.profile as NonAllProfile))
               : undefined;
-          const selection = selectedInstances[serviceKey] ?? [];
-          const hasSelection = selection.length > 0;
-          const selectedInstanceDetails = service.instances.filter(instance => selection.includes(instance.id));
-          const startableSelectedCount = selectedInstanceDetails.filter(instance => normaliseStatus(instance) !== "running").length;
-          const stoppableSelectedCount = selectedInstanceDetails.filter(instance => normaliseStatus(instance) === "running").length;
 
           return (
             <Card
               key={serviceKey}
               title={service.name}
               icon={<ServiceGlyph />}
-              iconWrapperClassName={isExpanded ? "text-emerald-200" : "text-emerald-300"}
+              iconWrapperClassName={isSelected ? "text-emerald-200" : "text-emerald-300"}
               className={`${
-                isExpanded 
+                isSelected 
                   ? "border-emerald-400/70 bg-emerald-950/30 shadow-lg shadow-emerald-400/10 ring-1 ring-emerald-400/20" 
-                  : "border-slate-800 bg-slate-900/70 hover:border-emerald-300/60"
+                  : "border-slate-800 bg-slate-900/70 hover:border-emerald-300/60 cursor-pointer"
               } transition-all duration-200`}
-              contentClassName="space-y-6 text-slate-200"
-              topRightAction={
-                <button
-                  type="button"
-                  className={`inline-flex items-center gap-1 transition ${
-                    isExpanded 
-                      ? "text-emerald-200 hover:text-emerald-100 font-medium" 
-                      : "text-emerald-300 hover:text-emerald-200"
-                  }`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    toggleServiceExpanded(service.profile, service.name);
-                  }}
-                >
-                  {isExpanded ? "Collapse" : "Expand"}
-                  <span aria-hidden>{isExpanded ? "–" : "+"}</span>
-                </button>
-              }
-              footer={
-                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                  <span className={hasSelection ? "text-emerald-300" : "text-slate-500"}>
-                    {hasSelection
-                      ? `${selection.length} instance${selection.length !== 1 ? "s" : ""} selected`
-                      : isExpanded ? "No instances selected" : "Expand to view instances"}
-                  </span>
-                  {isExpanded ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                          startableSelectedCount > 0
-                            ? "border-emerald-400/50 text-emerald-200 hover:bg-emerald-400/10"
-                            : "border-slate-700 text-slate-500 cursor-not-allowed"
-                        }`}
-                        disabled={startableSelectedCount === 0}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleServiceSelectionAction(serviceKey, "start");
-                        }}
-                      >
-                        ▶ Start Selected ({startableSelectedCount})
-                      </button>
-                      <button
-                        type="button"
-                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                          stoppableSelectedCount > 0
-                            ? "border-rose-400/50 text-rose-200 hover:bg-rose-400/10"
-                            : "border-slate-700 text-slate-500 cursor-not-allowed"
-                        }`}
-                        disabled={stoppableSelectedCount === 0}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleServiceSelectionAction(serviceKey, "stop");
-                        }}
-                      >
-                        ■ Stop Selected ({stoppableSelectedCount})
-                      </button>
-                      {hasSelection ? (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-700 px-2 py-0.5 text-slate-300 transition hover:bg-slate-800"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            clearSelection(serviceKey);
-                          }}
-                        >
-                          Clear
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              }
+              contentClassName="space-y-3 text-slate-200"
+              onClick={() => toggleServiceExpanded(service.profile, service.name)}
             >
-              <div className="space-y-6">
-                <div className="space-y-3">
+              <div className="space-y-3">
+                <div className="space-y-2">
                   <p className="text-sm leading-relaxed text-slate-200">{service.summary}</p>
                   {service.profile === "all" ? (
                     <div className="flex flex-wrap gap-2 text-xs">
@@ -612,50 +535,162 @@ export function ServicesView(): JSX.Element {
                     </div>
                   ) : null}
                 </div>
+              </div>
+            </Card>
+          );
+        })
+          ) : (
+            <Card
+              title="Services"
+              icon={<ServiceGlyph />}
+              iconWrapperClassName="text-slate-400"
+              className="border-slate-700 bg-slate-900/50"
+              contentClassName="space-y-6 text-slate-200"
+            >
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="mb-4 rounded-full bg-slate-800/50 p-6">
+                  <ServiceGlyph />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-300 mb-2">
+                  No Profile Selected
+                </h3>
+                <p className="text-sm text-slate-400 max-w-md">
+                  Select any profile summary card to view services.
+                </p>
+              </div>
+            </Card>
+          )}
+        </div>
+        
+        {/* Right Side - Instance Details */}
+        <div className="space-y-6 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)]">
+          {selectedService ? (
+            <Card
+              title={`${selectedService.name} - Instance Details`}
+              icon={<ServiceGlyph />}
+              iconWrapperClassName="text-emerald-200"
+              className="border-emerald-400/70 bg-emerald-950/30 shadow-lg shadow-emerald-400/10"
+              contentClassName="space-y-4 text-slate-200"
+              topRightAction={
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-emerald-200 hover:text-emerald-100 transition font-medium"
+                  onClick={() => setSelectedServiceKey(null)}
+                >
+                  Close
+                  <span aria-hidden>×</span>
+                </button>
+              }
+            >
+              <div className="flex flex-wrap items-center gap-2 text-xs mb-4">
+                {selectedService.profile !== "all" && (
+                  <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
+                    {profileLabels[selectedService.profile]}
+                  </span>
+                )}
+                <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
+                  Total {getStatusCounts(selectedService.instances).running}/{selectedService.instances.length}
+                </span>
+              </div>
 
-                {isExpanded ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-300">Instances</h4>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {service.instances.map((instance) => {
-                        const machineMeta = infraByMachine.get(instance.machineName);
-                        const status = normaliseStatus(instance);
-                        const isSelected = selection.includes(instance.id);
-                        return (
-                          <div
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                  Instances ({selectedService.instances.length})
+                </h4>
+                {(() => {
+                      const selection = selectedInstances[selectedServiceKey!] ?? [];
+                      const hasSelection = selection.length > 0;
+                      const selectedInstanceDetails = selectedService.instances.filter(instance => selection.includes(instance.id));
+                      const startableSelectedCount = selectedInstanceDetails.filter(instance => normaliseStatus(instance) !== "running").length;
+                      const stoppableSelectedCount = selectedInstanceDetails.filter(instance => normaliseStatus(instance) === "running").length;
+                      
+                      return hasSelection ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
+                              startableSelectedCount > 0
+                                ? "border-emerald-400/50 text-emerald-200 hover:bg-emerald-400/10"
+                                : "border-slate-700 text-slate-500 cursor-not-allowed"
+                            }`}
+                            disabled={startableSelectedCount === 0}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleServiceSelectionAction(selectedServiceKey!, "start");
+                            }}
+                          >
+                            ▶ Start ({startableSelectedCount})
+                          </button>
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
+                              stoppableSelectedCount > 0
+                                ? "border-rose-400/50 text-rose-200 hover:bg-rose-400/10"
+                                : "border-slate-700 text-slate-500 cursor-not-allowed"
+                            }`}
+                            disabled={stoppableSelectedCount === 0}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleServiceSelectionAction(selectedServiceKey!, "stop");
+                            }}
+                          >
+                            ■ Stop ({stoppableSelectedCount})
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:bg-slate-800"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              clearSelection(selectedServiceKey!);
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                  
+                  <div className="space-y-3 max-h-[calc(100vh-28rem)] overflow-y-auto -mr-6 pr-6">
+                    {selectedService.instances.map((instance) => {
+                      const machineMeta = infraByMachine.get(instance.machineName);
+                      const status = normaliseStatus(instance);
+                      const selection = selectedInstances[selectedServiceKey!] ?? [];
+                      const isInstanceSelected = selection.includes(instance.id);
+                      
+                      return (
+                        <div
                           key={instance.id}
-                          className={`group rounded-lg border bg-slate-900/60 px-3 py-3 transition ${
-                            isSelected
+                          className={`group rounded-lg border bg-slate-900/60 px-3 py-2 transition cursor-pointer ${
+                            isInstanceSelected
                               ? "border-emerald-400/60 ring-1 ring-emerald-400/30"
                               : "border-slate-800 hover:border-emerald-300/40"
                           }`}
                           role="checkbox"
-                          aria-checked={isSelected}
+                          aria-checked={isInstanceSelected}
                           tabIndex={0}
                           onClick={(event) => {
                             event.stopPropagation();
-                            toggleInstanceSelected(serviceKey, instance.id);
+                            toggleInstanceSelected(selectedServiceKey!, instance.id);
                           }}
                           onKeyDown={(event) => {
                             if (event.key === " " || event.key === "Enter") {
                               event.preventDefault();
-                              toggleInstanceSelected(serviceKey, instance.id);
+                              toggleInstanceSelected(selectedServiceKey!, instance.id);
                             }
                           }}
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-                                <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-200">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-1 flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                                <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 text-[10px]">
                                   {profileLabels[instance.profile]}
                                 </span>
-                                <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200">
+                                <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
                                   v{instance.version}
                                 </span>
                               </div>
-                              <div className="text-sm font-medium text-slate-100">
+                              <div className="text-sm font-medium text-slate-100 truncate">
                                 {instance.machineName}
                               </div>
                               <div className="text-xs text-slate-500">
@@ -664,40 +699,58 @@ export function ServicesView(): JSX.Element {
                             </div>
                             <ServiceStatusBadge status={status} />
                           </div>
-                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-                            <code className="text-slate-500">{instance.id}</code>
-                            <span>Uptime {formatUptime(instance.uptime)}</span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold text-emerald-300">
-                            <a
-                              className="inline-flex items-center gap-1 transition hover:text-emerald-200"
-                              href={instance.logURL}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              Logs ↗
-                            </a>
-                            <a
-                              className="inline-flex items-center gap-1 transition hover:text-emerald-200"
-                              href={instance.metricsURL}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              Metrics ↗
-                            </a>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
+                            <span className="truncate">Uptime {formatUptime(instance.uptime)}</span>
+                            <div className="flex gap-2 text-xs font-semibold text-emerald-300 flex-shrink-0">
+                              <a
+                                className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                href={instance.logURL}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                                title="View Logs"
+                              >
+                                Logs ↗
+                              </a>
+                              <a
+                                className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                href={instance.metricsURL}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                                title="View Metrics"
+                              >
+                                Metrics ↗
+                              </a>
+                            </div>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                  </div>
-                ) : null}
+            </Card>
+          ) : (
+            <Card
+              title="Instance Details"
+              icon={<ServiceGlyph />}
+              iconWrapperClassName="text-slate-400"
+              className="border-slate-700 bg-slate-900/50"
+              contentClassName="space-y-6 text-slate-200"
+            >
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="mb-4 rounded-full bg-slate-800/50 p-6">
+                  <ServiceGlyph />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-300 mb-2">
+                  No Service Selected
+                </h3>
+                <p className="text-sm text-slate-400 max-w-md">
+                  Select any service to view instances.
+                </p>
               </div>
             </Card>
-          );
-        })}
+          )}
+          </div>
       </div>
       
       <ActionConfirmationModal
