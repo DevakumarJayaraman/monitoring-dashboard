@@ -12,11 +12,17 @@ import java.util.Optional;
 @Repository
 public interface InfrastructureRepository extends JpaRepository<Infrastructure, Long> {
 
-    Optional<Infrastructure> findByInfraName(String infraName);
+    Optional<Infrastructure> findByHostname(String hostname);
 
     List<Infrastructure> findByInfraType(String infraType);
 
     List<Infrastructure> findByEnvironment(String environment);
+    
+    List<Infrastructure> findByRegion(String region);
+    
+    List<Infrastructure> findByStatus(String status);
+    
+    List<Infrastructure> findByRegionAndEnvironment(String region, String environment);
 
     List<Infrastructure> findByInfraTypeAndEnvironment(String infraType, String environment);
 
@@ -26,5 +32,7 @@ public interface InfrastructureRepository extends JpaRepository<Infrastructure, 
         @Param("environment") String environment
     );
 
-    boolean existsByInfraName(String infraName);
+    boolean existsByHostname(String hostname);
+
+    Optional<Infrastructure> findByInfraName(String infraName);
 }

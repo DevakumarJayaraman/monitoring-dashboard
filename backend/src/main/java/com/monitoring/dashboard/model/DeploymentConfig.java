@@ -9,8 +9,8 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "ops_deployment_configs",
        uniqueConstraints = @UniqueConstraint(
-           name = "uk_service_infra_profile_resource",
-           columnNames = {"service_id", "infra_id", "profile", "resource_name"}
+           name = "uk_component_infra_profile_resource",
+           columnNames = {"componentId", "infraId", "profile", "resourceName"}
        ))
 @Data
 @NoArgsConstructor
@@ -19,26 +19,26 @@ public class DeploymentConfig {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "config_id")
+    @Column(name = "configId")
     private Long configId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "service_id", nullable = false)
+    @JoinColumn(name = "componentId", nullable = false)
     @JsonIgnore
-    private Service service;
+    private Component component;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "infra_id")
+    @JoinColumn(name = "infraId")
     @JsonIgnore
     private Infrastructure infrastructure;
 
     @Column(name = "profile")
     private String profile;
 
-    @Column(name = "resource_name", nullable = false)
+    @Column(name = "resourceName", nullable = false)
     private String resourceName;  // cpu, memory, threads
 
-    @Column(name = "limit_value", nullable = false)
+    @Column(name = "limitValue", nullable = false)
     private String limitValue;
 
     @Column(name = "unit")

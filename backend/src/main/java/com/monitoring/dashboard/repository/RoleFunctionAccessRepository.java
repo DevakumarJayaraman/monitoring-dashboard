@@ -5,7 +5,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Repository interface for {@link RoleFunctionAccess} entities. Exposes methods to
@@ -24,41 +23,6 @@ public interface RoleFunctionAccessRepository extends JpaRepository<RoleFunction
      */
     List<RoleFunctionAccess> findByRoleNameAndEnvCode(String roleName, String envCode);
 
-    /**
-     * Find a specific access mapping by role, function code, and environment code.
-     *
-     * @param roleName the name of the role
-     * @param functionCode the function code
-     * @param envCode the environment code
-     * @return Optional containing the access mapping if found
-     */
-    Optional<RoleFunctionAccess> findByRoleNameAndFunctionCodeAndEnvCode(String roleName, 
-                                                                           String functionCode, 
-                                                                           String envCode);
-
-    /**
-     * Find all mappings for a specific role.
-     *
-     * @param roleName the name of the role
-     * @return list of all access mappings for this role
-     */
-    List<RoleFunctionAccess> findByRoleName(String roleName);
-
-    /**
-     * Find all mappings for a specific function code.
-     *
-     * @param functionCode the function code
-     * @return list of all access mappings for this function
-     */
-    List<RoleFunctionAccess> findByFunctionCode(String functionCode);
-
-    /**
-     * Find all mappings for a specific environment code.
-     *
-     * @param envCode the environment code
-     * @return list of all access mappings for this environment
-     */
-    List<RoleFunctionAccess> findByEnvCode(String envCode);
 
     /**
      * Fetch all RoleFunctionAccess entries for a given role name and null environment

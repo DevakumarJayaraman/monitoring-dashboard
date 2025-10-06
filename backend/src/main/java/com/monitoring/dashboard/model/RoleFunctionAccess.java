@@ -1,6 +1,9 @@
 package com.monitoring.dashboard.model;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
  * Entity representing a mapping between a user role, a function code and an environment code.
@@ -14,19 +17,22 @@ import jakarta.persistence.*;
  */
 @Entity
 @Table(name = "ops_role_function_access")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class RoleFunctionAccess {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "access_id")
+    @Column(name = "accessId")
     private Long accessId;
 
-    @Column(name = "role_name", nullable = false)
+    @Column(name = "roleName", nullable = false)
     private String roleName;
 
-    @Column(name = "function_code", nullable = false)
+    @Column(name = "functionCode", nullable = false)
     private String functionCode;
 
-    @Column(name = "env_code", nullable = true, length = 50)
+    @Column(name = "envCode", length = 50)
     private String envCode;
 
     @Column(name = "allowed", length = 1)
@@ -39,76 +45,10 @@ public class RoleFunctionAccess {
     @Column(name = "version", nullable = false)
     private Long version = 0L;
 
-    public RoleFunctionAccess() {
-        // Default constructor required by JPA
-    }
-
     public RoleFunctionAccess(String roleName, String functionCode, String envCode, String allowed) {
         this.roleName = roleName;
         this.functionCode = functionCode;
         this.envCode = envCode;
         this.allowed = allowed;
-    }
-
-    // Getters and setters
-
-    public Long getAccessId() {
-        return accessId;
-    }
-
-    public void setAccessId(Long accessId) {
-        this.accessId = accessId;
-    }
-
-    public String getRoleName() {
-        return roleName;
-    }
-
-    public void setRoleName(String roleName) {
-        this.roleName = roleName;
-    }
-
-    public String getFunctionCode() {
-        return functionCode;
-    }
-
-    public void setFunctionCode(String functionCode) {
-        this.functionCode = functionCode;
-    }
-
-    public String getEnvCode() {
-        return envCode;
-    }
-
-    public void setEnvCode(String envCode) {
-        this.envCode = envCode;
-    }
-
-    public String getAllowed() {
-        return allowed;
-    }
-
-    public void setAllowed(String allowed) {
-        this.allowed = allowed;
-    }
-
-    public Long getVersion() {
-        return version;
-    }
-
-    public void setVersion(Long version) {
-        this.version = version;
-    }
-
-    @Override
-    public String toString() {
-        return "RoleFunctionAccess{" +
-                "accessId=" + accessId +
-                ", roleName='" + roleName + '\'' +
-                ", functionCode='" + functionCode + '\'' +
-                ", envCode='" + envCode + '\'' +
-                ", allowed='" + allowed + '\'' +
-                ", version=" + version +
-                '}';
     }
 }

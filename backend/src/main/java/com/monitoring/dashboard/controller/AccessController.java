@@ -1,10 +1,12 @@
 package com.monitoring.dashboard.controller;
 
 import com.monitoring.dashboard.service.AccessService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,18 +18,15 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/access")
+@RequiredArgsConstructor
 public class AccessController {
     private final AccessService accessService;
-
-    public AccessController(AccessService accessService) {
-        this.accessService = accessService;
-    }
 
     /**
      * Return the permissions granted to a role in a particular environment.
      *
      * @param role the name of the role (case-sensitive)
-     * @param env the environment code
+     * @param env  the environment code
      * @return a map containing the role, environment and permitted function codes
      */
     @GetMapping("/{role}/{env}")

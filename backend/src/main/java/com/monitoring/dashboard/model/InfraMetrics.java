@@ -10,36 +10,36 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "ops_infra_usage_metrics")
+@Table(name = "ops_infra_metrics")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class InfraUsageMetric {
+public class InfraMetrics {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "metric_id")
+    @Column(name = "metricId")
     private Long metricId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "infra_id", nullable = false)
+    @JoinColumn(name = "infraId", nullable = false)
     @JsonIgnore
     private Infrastructure infrastructure;
 
-    @Column(name = "metric_name", nullable = false)
-    private String metricName;  // cpu_usage_pct, disk_usage_pct
+    @Column(name = "metricName", nullable = false)
+    private String metricName;  // cpu_limit, memory_limit, cpu_usage, memory_usage, etc.
 
-    @Column(name = "metric_value", nullable = false)
+    @Column(name = "metricValue", nullable = false)
     private String metricValue;
 
     @Column(name = "unit")
     private String unit;
 
-    @Column(name = "metric_date", nullable = false)
-    private LocalDate metricDate;  // summary date
+    @Column(name = "metricDate")
+    private LocalDate metricDate;  // summary date (null for limits)
 
-    @Column(name = "metric_time", nullable = false)
-    private LocalDateTime metricTime;  // exact timestamp
+    @Column(name = "metricTime")
+    private LocalDateTime metricTime;  // exact timestamp (null for limits)
 
     @Version
     @Column(name = "version", nullable = false)

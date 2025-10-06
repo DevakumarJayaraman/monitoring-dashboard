@@ -1,5 +1,6 @@
 package com.monitoring.dashboard.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -17,34 +18,50 @@ public class Infrastructure {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "infra_id")
+    @Column(name = "infraId")
     private Long infraId;
 
-    @Column(name = "infra_name", nullable = false)
-    private String infraName;
-
-    @Column(name = "infra_type", nullable = false)
+    @Column(name = "infraType", nullable = false)
     private String infraType;  // ecs/linux/windows/dbaas
 
-    @Column(name = "hostname")
+    @Column(name = "hostname", nullable = false)
     private String hostname;
 
-    @Column(name = "ip_address")
+    @Column(name = "ipAddress")
     private String ipAddress;
 
     @Column(name = "environment")
     private String environment;  // DEV/UAT/PROD
+
+    @Column(name = "region", length = 20)
+    private String region;  // APAC, NAM, EMEA
+
+    @Column(name = "datacenter", length = 50)
+    private String datacenter;  // ap-southeast-1a, us-east-1a, etc.
+
+    @Column(name = "status", length = 20)
+    private String status;  // healthy, watch, scaling
+
+    @Column(name = "infraName")
+    private String infraName; // short name, e.g. "apacqa-vm1"
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "projectId")
+    @JsonIgnore
+    private Project project;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "envId")
+    @JsonIgnore
+    private ProjectEnvironment projectEnvironment;
 
     @Version
     @Column(name = "version", nullable = false)
     private Long version = 0L;
 
     @OneToMany(mappedBy = "infrastructure", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<InfraResourceLimit> resourceLimits = new ArrayList<>();
+    private List<InfraMetrics> metrics = new ArrayList<>();
 
     @OneToMany(mappedBy = "infrastructure", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<InfraUsageMetric> usageMetrics = new ArrayList<>();
-
-    @OneToMany(mappedBy = "infrastructure", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<ServiceDeployment> serviceDeployments = new ArrayList<>();
+    private List<ComponentDeployment> componentDeployments = new ArrayList<>();
 }

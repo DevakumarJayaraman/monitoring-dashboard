@@ -11,15 +11,15 @@ import java.util.List;
 @Repository
 public interface DeploymentConfigRepository extends JpaRepository<DeploymentConfig, Long> {
 
-    List<DeploymentConfig> findByService_ServiceId(Long serviceId);
+    List<DeploymentConfig> findByComponent_ComponentId(Long componentId);
 
     List<DeploymentConfig> findByInfrastructure_InfraId(Long infraId);
 
     List<DeploymentConfig> findByProfile(String profile);
 
-    @Query("SELECT dc FROM DeploymentConfig dc WHERE dc.service.serviceId = :serviceId AND dc.infrastructure.infraId = :infraId AND dc.profile = :profile")
-    List<DeploymentConfig> findByServiceAndInfraAndProfile(
-        @Param("serviceId") Long serviceId,
+    @Query("SELECT dc FROM DeploymentConfig dc WHERE dc.component.componentId = :componentId AND dc.infrastructure.infraId = :infraId AND dc.profile = :profile")
+    List<DeploymentConfig> findByComponentAndInfraAndProfile(
+        @Param("componentId") Long componentId,
         @Param("infraId") Long infraId,
         @Param("profile") String profile
     );

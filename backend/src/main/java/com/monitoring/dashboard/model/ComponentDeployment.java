@@ -7,38 +7,37 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "ops_service_deployments", 
+@Table(name = "ops_component_deployments",
        uniqueConstraints = @UniqueConstraint(
-           name = "uk_service_infra_profile",
-           columnNames = {"service_id", "infra_id", "profile"}
+           name = "uk_component_infra_profile",
+           columnNames = {"componentId", "infraId", "profile"}
        ))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ServiceDeployment {
-
+public class ComponentDeployment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "mapping_id")
+    @Column(name = "mappingId")
     private Long mappingId;
-
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "service_id", nullable = false)
+    @JoinColumn(name = "componentId", nullable = false)
     @JsonIgnore
-    private Service service;
-
+    private Component component;
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "infra_id", nullable = false)
+    @JoinColumn(name = "infraId", nullable = false)
     @JsonIgnore
     private Infrastructure infrastructure;
-
     @Column(name = "profile", nullable = false)
     private String profile;
-
+    @Column(name = "instanceId", unique = true, length = 50)
+    private String instanceId;
     @Column(name = "port")
     private Integer port;
-
-    @Version
-    @Column(name = "version", nullable = false)
-    private Long version = 0L;
+    @Column(name = "componentVersion", length = 20)
+    private String componentVersion;
+    @Column(name = "status", length = 20)
+    private String status;
+    @Column(name = "uptimeSeconds")
+    private Long uptimeSeconds;
 }

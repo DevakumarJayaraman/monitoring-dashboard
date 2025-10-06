@@ -14,9 +14,9 @@ public class CreateDeploymentRequest {
     @NotNull(message = "Service ID is required")
     private Long serviceId;
     
-    @NotNull(message = "Infrastructure name is required")
-    private String infraName;
-    
+    @NotNull(message = "Hostname is required")
+    private String hostname;
+
     @NotNull(message = "Profile is required")
     private String profile;
     

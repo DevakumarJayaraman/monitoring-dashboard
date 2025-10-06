@@ -14,9 +14,6 @@ public class InfrastructureDTO {
     
     private Long infraId;
     
-    @NotBlank(message = "Infrastructure name is required")
-    private String infraName;
-    
     @NotBlank(message = "Infrastructure type is required")
     private String infraType;  // ecs/linux/windows/dbaas
     
@@ -26,10 +23,16 @@ public class InfrastructureDTO {
     @NotBlank(message = "Environment is required")
     private String environment;  // DEV/UAT/PROD
     
+    private String region;  // APAC, NAM, EMEA
+    private String datacenter;  // ap-southeast-1a, us-east-1a, etc.
+    private String status;  // healthy, watch, scaling
+
+    private Long projectId;
+    private String projectName;
+
     private List<ResourceLimitDTO> resourceLimits;
     private List<UsageMetricDTO> currentMetrics;
-    private List<ServiceDeploymentDTO> deployedServices;
-    
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

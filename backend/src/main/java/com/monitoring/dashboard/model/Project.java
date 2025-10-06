@@ -1,6 +1,10 @@
 package com.monitoring.dashboard.model;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,14 +14,17 @@ import java.util.List;
  */
 @Entity
 @Table(name = "ops_projects")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Project {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "project_id")
+    @Column(name = "projectId")
     private Long projectId;
 
-    @Column(name = "project_name", nullable = false, length = 255)
+    @Column(name = "projectName", nullable = false, length = 255)
     private String projectName;
 
     @Column(name = "description", length = 1000)
@@ -33,55 +40,15 @@ public class Project {
     @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ProjectEnvironment> environments = new ArrayList<>();
 
-    public Project() {
-        // Default constructor required by JPA
-    }
+    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Infrastructure> infrastructures = new ArrayList<>();
+
+    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Component> components = new ArrayList<>();
 
     public Project(String projectName, String description) {
         this.projectName = projectName;
         this.description = description;
-    }
-
-    // Getters and setters
-
-    public Long getProjectId() {
-        return projectId;
-    }
-
-    public void setProjectId(Long projectId) {
-        this.projectId = projectId;
-    }
-
-    public String getProjectName() {
-        return projectName;
-    }
-
-    public void setProjectName(String projectName) {
-        this.projectName = projectName;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public Long getVersion() {
-        return version;
-    }
-
-    public void setVersion(Long version) {
-        this.version = version;
-    }
-
-    public List<ProjectEnvironment> getEnvironments() {
-        return environments;
-    }
-
-    public void setEnvironments(List<ProjectEnvironment> environments) {
-        this.environments = environments;
     }
 
     // Helper methods for bidirectional relationship
@@ -96,13 +63,23 @@ public class Project {
         environment.setProject(null);
     }
 
-    @Override
-    public String toString() {
-        return "Project{" +
-                "projectId=" + projectId +
-                ", projectName='" + projectName + '\'' +
-                ", description='" + description + '\'' +
-                ", version=" + version +
-                '}';
+    public void addInfrastructure(Infrastructure infrastructure) {
+        infrastructures.add(infrastructure);
+        infrastructure.setProject(this);
+    }
+
+    public void removeInfrastructure(Infrastructure infrastructure) {
+        infrastructures.remove(infrastructure);
+        infrastructure.setProject(null);
+    }
+
+    public void addComponent(Component component) {
+        components.add(component);
+        component.setProject(this);
+    }
+
+    public void removeComponent(Component component) {
+        components.remove(component);
+        component.setProject(null);
     }
 }
