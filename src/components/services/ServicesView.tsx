@@ -4,12 +4,11 @@ import type { JSX } from "react";
 import { Card } from "../Card";
 import { ServiceStatusBadge } from "../shared/StatusIndicators";
 import { ProfileSelector } from "./ProfileSelector";
-import { ServicesSummary } from "./ServicesSummary";
+import { ServicesSummary, type EnvironmentFilter } from "./ServicesSummary";
 import { ActionConfirmationModal, type ActionResult } from "./ActionConfirmationModal";
-import { ServiceGlyph, profileLabels } from "../../features/infrastructure/config";
+import { ServiceGlyph } from "../../features/infrastructure/config";
 import {
   formatUptime,
-  ServicesInstances,
   serviceSummaryByName,
 } from "../../features/infrastructure/data";
 import type {
@@ -18,6 +17,7 @@ import type {
   ServicesInstance,
   ServiceStatus,
 } from "../../types/infrastructure";
+import { fetchAllServiceInstances } from "../../services/api";
 
 type ServiceCard = {
   name: string;
@@ -42,9 +42,13 @@ const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
 
 export function ServicesView(): JSX.Element {
   const [activeProfiles, setActiveProfiles] = useState<ServiceProfileKey[]>([]);
+  const [environmentFilter, setEnvironmentFilter] = useState<EnvironmentFilter>('ALL');
   const [selectedInstances, setSelectedInstances] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedServiceKey, setSelectedServiceKey] = useState<string | null>(null);
+  const [servicesInstances, setServicesInstances] = useState<ServicesInstance[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Modal state
   const [modalState, setModalState] = useState<{
@@ -61,6 +65,42 @@ export function ServicesView(): JSX.Element {
     serviceNames: []
   });
 
+  // Load services from backend
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const apiInstances = await fetchAllServiceInstances();
+        
+        // Convert API instances to frontend format
+        const convertedInstances: ServicesInstance[] = apiInstances.map((api) => ({
+          id: api.id,
+          serviceName: api.serviceName,
+          machineName: api.machineName,
+          Port: api.port, // Convert lowercase port from API to uppercase Port for frontend
+          infraType: api.infraType,
+          profile: api.profile as ServiceProfileKey,
+          envType: api.envType, // Add environment type
+          uptime: api.uptime, // already in minutes from backend
+          version: api.version,
+          logURL: api.logURL,
+          metricsURL: api.metricsURL,
+          status: api.status,
+        }));
+        
+        setServicesInstances(convertedInstances);
+      } catch (err) {
+        console.error('Failed to load services:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load services');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadServices();
+  }, []);
+
   const serviceSummaryMap = useMemo(
     () => new Map<string, string>(Object.entries(serviceSummaryByName)),
     []
@@ -69,7 +109,7 @@ export function ServicesView(): JSX.Element {
   const serviceVariantsByName = useMemo(() => {
     const map = new Map<string, Map<NonAllProfile, ServiceVariant>>();
 
-    ServicesInstances.forEach((instance) => {
+    servicesInstances.forEach((instance) => {
       if (instance.profile === "all") return;
       const profileKey = instance.profile as NonAllProfile;
       if (!map.has(instance.serviceName)) {
@@ -92,7 +132,7 @@ export function ServicesView(): JSX.Element {
     });
 
     return map;
-  }, [serviceSummaryMap]);
+  }, [serviceSummaryMap, servicesInstances]);
 
   const servicesByProfile = useMemo(() => {
     const result = new Map<ServiceProfileKey, Map<string, ServiceVariant>>();
@@ -371,12 +411,31 @@ export function ServicesView(): JSX.Element {
     ? filteredServices.find(s => `${s.profile}-${s.name}` === selectedServiceKey)
     : null;
 
+  // Show loading and error states
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">Loading services...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-500">Error: {error}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Services Summary by Profile */}
       <ServicesSummary 
-        servicesInstances={ServicesInstances}
+        servicesInstances={servicesInstances}
         activeProfiles={activeProfiles}
+        environmentFilter={environmentFilter}
+        onEnvironmentFilterChange={setEnvironmentFilter}
         onProfileClick={(profile) => {
           if (profile === "all") {
             setActiveProfiles(["all"]);
@@ -394,7 +453,12 @@ export function ServicesView(): JSX.Element {
       />
       
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <ProfileSelector value={activeProfiles} onChange={setActiveProfiles} />
+        <ProfileSelector 
+          value={activeProfiles} 
+          onChange={setActiveProfiles}
+          environmentFilter={environmentFilter}
+          servicesInstances={servicesInstances}
+        />
       </div>
       
       {/* Search Services - Only visible when profile selected */}
@@ -458,7 +522,13 @@ export function ServicesView(): JSX.Element {
           const isSelected = selectedServiceKey === serviceKey;
           const statusCounts = getStatusCounts(service.instances);
           const totalInstances = service.instances.length;
-          const perProfileStats = getServiceProfileStats(service.name);
+          const allProfileStats = getServiceProfileStats(service.name);
+          
+          // Filter profile stats to only show selected profiles
+          const perProfileStats = service.profile === "all" 
+            ? allProfileStats.filter(stat => activeProfiles.includes(stat.profileKey))
+            : allProfileStats;
+            
           const profileStat =
             service.profile !== "all"
               ? perProfileStats.find((stat) => stat.profileKey === (service.profile as NonAllProfile))
@@ -488,7 +558,7 @@ export function ServicesView(): JSX.Element {
                           key={profileKey}
                           className={`rounded-full px-3 py-1 border ${getStatusBadgeClass(running, total)}`}
                         >
-                          {profileLabels[profileKey]} {running}/{total}
+                          {profileKey} {running}/{total}
                         </span>
                       ))}
                       <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
@@ -498,7 +568,7 @@ export function ServicesView(): JSX.Element {
                   ) : profileStat ? (
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
-                        {profileLabels[service.profile]}
+                        {service.profile}
                       </span>
                       <span
                         className={`rounded-full px-3 py-1 border ${getStatusBadgeClass(
@@ -561,7 +631,7 @@ export function ServicesView(): JSX.Element {
               <div className="flex flex-wrap items-center gap-2 text-xs mb-4">
                 {selectedService.profile !== "all" && (
                   <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
-                    {profileLabels[selectedService.profile]}
+                    {selectedService.profile}
                   </span>
                 )}
                 <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
@@ -643,7 +713,7 @@ export function ServicesView(): JSX.Element {
                       const sortedProfiles = Array.from(instancesByProfile.keys()).sort((a, b) => {
                         if (a === "all") return -1;
                         if (b === "all") return 1;
-                        return profileLabels[a].localeCompare(profileLabels[b]);
+                        return a.localeCompare(b);
                       });
                       
                       return sortedProfiles.map((profile) => {
@@ -656,7 +726,7 @@ export function ServicesView(): JSX.Element {
                             <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
                               <div className="flex items-center gap-2">
                                 <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-emerald-200 text-xs font-medium">
-                                  {profileLabels[profile]}
+                                  {profile}
                                 </span>
                                 <span className="text-xs text-slate-400">
                                   {instances.length} {instances.length === 1 ? 'instance' : 'instances'}

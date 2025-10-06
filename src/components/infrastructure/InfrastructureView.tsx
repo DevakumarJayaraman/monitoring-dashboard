@@ -6,7 +6,7 @@ import { UsageMeter } from "../shared/UsageMeter";
 import { SeparateProgressBars } from "../shared/SeparateProgressBars";
 import { InfraSummaryCard } from "../shared/EcsSummaryCard";
 import { HousekeepingModal, type HousekeepingInfo, type HousekeepingStep } from "./HousekeepingModal";
-import { infraTypeConfig, profileLabels } from "../../features/infrastructure/config";
+import { infraTypeConfig } from "../../features/infrastructure/config";
 import { formatUptime, InfraDetails } from "../../features/infrastructure/data";
 import type { InfraDetail, ServicesInstance, ServiceStatus, UsageMetric, EcsMetrics } from "../../types/infrastructure";
 
@@ -675,7 +675,7 @@ export function InfrastructureView() {
                                     {instance.serviceName}
                                   </span>
                                   <span className="text-xs text-slate-400">
-                                    {profileLabels[instance.profile]}
+                                    {instance.profile}
                                   </span>
                                   <span className="text-xs text-slate-500">
                                     v{instance.version}

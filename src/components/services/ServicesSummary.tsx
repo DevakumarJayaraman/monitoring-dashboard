@@ -4,11 +4,14 @@ import type {
   ServiceProfileKey, 
   ServiceStatus
 } from "../../types/infrastructure";
-import { profileLabels } from "../../features/infrastructure/config";
+
+type EnvironmentFilter = 'ALL' | 'DEV' | 'STAGING' | 'PROD_COB';
+
+export type { EnvironmentFilter };
 
 type ServiceSummaryStats = {
   profile: ServiceProfileKey;
-  profileLabel: string;
+  envType: string; // DEV, STAGING, PROD, COB
   totalServices: number;
   totalInstances: number;
   runningInstances: number;
@@ -21,6 +24,8 @@ interface ServicesSummaryProps {
   servicesInstances: ServicesInstance[];
   activeProfiles: ServiceProfileKey[];
   onProfileClick: (profile: ServiceProfileKey) => void;
+  environmentFilter: EnvironmentFilter;
+  onEnvironmentFilterChange: (filter: EnvironmentFilter) => void;
 }
 
 const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
@@ -35,22 +40,17 @@ const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
 export function ServicesSummary({ 
   servicesInstances, 
   activeProfiles, 
-  onProfileClick 
+  onProfileClick,
+  environmentFilter,
+  onEnvironmentFilterChange
 }: ServicesSummaryProps): JSX.Element {
   
   const summaryStats = (): ServiceSummaryStats[] => {
     const profileStats = new Map<ServiceProfileKey, {
       services: Set<string>;
       instances: ServicesInstance[];
+      envType: string;
     }>();
-
-    // Initialize all profiles
-    Object.keys(profileLabels).forEach(profile => {
-      profileStats.set(profile as ServiceProfileKey, {
-        services: new Set(),
-        instances: []
-      });
-    });
 
     // Group instances by profile
     servicesInstances.forEach(instance => {
@@ -58,17 +58,32 @@ export function ServicesSummary({
       
       const profile = instance.profile;
       if (!profileStats.has(profile)) {
-        profileStats.set(profile, { services: new Set(), instances: [] });
+        profileStats.set(profile, { 
+          services: new Set(), 
+          instances: [],
+          envType: instance.envType || 'STAGING'
+        });
       }
       
       const stats = profileStats.get(profile)!;
       stats.services.add(instance.serviceName);
       stats.instances.push(instance);
+      // Set envType from first instance
+      if (instance.envType) {
+        stats.envType = instance.envType;
+      }
 
-      // Also add to "all" category - this ensures distinct service names and total instance count across all profiles
+      // Also add to "all" category
+      if (!profileStats.has("all")) {
+        profileStats.set("all", {
+          services: new Set(),
+          instances: [],
+          envType: 'ALL'
+        });
+      }
       const allStats = profileStats.get("all")!;
-      allStats.services.add(instance.serviceName); // Set automatically handles distinct service names
-      allStats.instances.push(instance); // All instances counted
+      allStats.services.add(instance.serviceName);
+      allStats.instances.push(instance);
     });
 
     // Convert to summary stats
@@ -81,7 +96,7 @@ export function ServicesSummary({
         
         return {
           profile,
-          profileLabel: profileLabels[profile],
+          envType: stats.envType,
           totalServices: stats.services.size,
           totalInstances: stats.instances.length,
           runningInstances,
@@ -91,14 +106,50 @@ export function ServicesSummary({
         };
       })
       .sort((a, b) => {
-        // "all" first, then alphabetical
+        // "all" first, then by envType (DEV, STAGING, PROD, COB), then alphabetical within each group
         if (a.profile === "all") return -1;
         if (b.profile === "all") return 1;
-        return a.profileLabel.localeCompare(b.profileLabel);
+        
+        // Order by environment type
+        const envOrder: Record<string, number> = { 'DEV': 1, 'STAGING': 2, 'PROD': 3, 'COB': 4 };
+        const envCompare = (envOrder[a.envType] || 99) - (envOrder[b.envType] || 99);
+        if (envCompare !== 0) return envCompare;
+        
+        // Then alphabetical by profile code within same environment
+        return a.profile.localeCompare(b.profile);
       });
   };
 
   const stats = summaryStats();
+  
+  // Filter out 'all' profile from display but keep specific profiles
+  const displayStats = stats.filter(stat => stat.profile !== 'all');
+  
+  // Apply environment filter
+  const filteredStats = environmentFilter === 'ALL' 
+    ? displayStats 
+    : environmentFilter === 'PROD_COB'
+    ? displayStats.filter(stat => stat.envType === 'PROD' || stat.envType === 'COB')
+    : displayStats.filter(stat => stat.envType === environmentFilter);
+  
+  // Group stats by environment type for UI display
+  const groupedStats = filteredStats.reduce((acc, stat) => {
+    const envType = stat.envType;
+    if (!acc[envType]) {
+      acc[envType] = [];
+    }
+    acc[envType].push(stat);
+    return acc;
+  }, {} as Record<string, ServiceSummaryStats[]>);
+  
+  const envTypeLabels: Record<string, string> = {
+    'DEV': 'Development',
+    'STAGING': 'Staging / UAT',
+    'PROD': 'Production',
+    'COB': 'Disaster Recovery (COB)'
+  };
+  
+  const envOrder = ['DEV', 'STAGING', 'PROD', 'COB'];
 
   const getHealthColor = (percentage: number): string => {
     if (percentage >= 90) return "text-green-400";
@@ -107,7 +158,7 @@ export function ServicesSummary({
   };
 
   const getProfileConfig = (profile: ServiceProfileKey) => {
-    // Define colors for different profile types similar to infra cards
+    // Define colors for different profile types
     const configs: Record<string, { bgClass: string; accentColor: string }> = {
       all: {
         bgClass: 'bg-violet-500/5 border-violet-400/50',
@@ -125,29 +176,9 @@ export function ServicesSummary({
         bgClass: 'bg-amber-500/5 border-amber-400/50',
         accentColor: 'text-amber-300'
       },
-      usqa: {
-        bgClass: 'bg-cyan-500/5 border-cyan-400/50',
-        accentColor: 'text-cyan-300'
-      },
-      usuat: {
-        bgClass: 'bg-indigo-500/5 border-indigo-400/50',
-        accentColor: 'text-indigo-300'
-      },
-      usprod: {
-        bgClass: 'bg-rose-500/5 border-rose-400/50',
-        accentColor: 'text-rose-300'
-      },
-      euqa: {
-        bgClass: 'bg-teal-500/5 border-teal-400/50',
-        accentColor: 'text-teal-300'
-      },
-      euuat: {
-        bgClass: 'bg-sky-500/5 border-sky-400/50',
-        accentColor: 'text-sky-300'
-      },
-      euprod: {
-        bgClass: 'bg-orange-500/5 border-orange-400/50',
-        accentColor: 'text-orange-300'
+      dev: {
+        bgClass: 'bg-slate-500/5 border-slate-400/50',
+        accentColor: 'text-slate-300'
       }
     };
     return configs[profile] || configs.all;
@@ -155,68 +186,106 @@ export function ServicesSummary({
 
   return (
     <div className="mb-6">
-      <h2 className="text-lg font-semibold text-slate-200 mb-4">Services Overview by Profile</h2>
-      
-      <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat) => {
-          const isSelected = activeProfiles.includes(stat.profile);
-          const profileConfig = getProfileConfig(stat.profile);
-          
-          return (
-            <div
-              key={stat.profile}
-              onClick={() => onProfileClick(stat.profile)}
-              className={`
-                rounded-xl border p-4 shadow-inner transition-all cursor-pointer hover:shadow-lg
-                ${profileConfig.bgClass} hover:scale-[1.02]
-                ${isSelected 
-                  ? "ring-2 ring-emerald-400/70 ring-offset-2 ring-offset-slate-950 shadow-lg shadow-emerald-400/20" 
-                  : ""
-                }
-              `}
-              role="button"
-              tabIndex={0}
-            >
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="text-sm font-semibold text-slate-100">
-                    {stat.profileLabel}
-                  </h4>
-                  <span className={`text-xs font-medium ${getHealthColor(stat.healthPercentage)}`}>
-                    {stat.healthPercentage}%
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400">
-                  {stat.totalServices} services • {stat.totalInstances} instances
-                </div>
-              </div>
-              
-              <div className="grid gap-4 grid-cols-3">
-                <div className="text-center">
-                  <div className="text-sm font-semibold text-emerald-300">
-                    {stat.runningInstances}
-                  </div>
-                  <div className="text-[10px] text-slate-400">Running</div>
-                </div>
-                
-                <div className="text-center">
-                  <div className="text-sm font-semibold text-rose-300">
-                    {stat.degradedInstances}
-                  </div>
-                  <div className="text-[10px] text-slate-400">Degraded</div>
-                </div>
-                
-                <div className="text-center">
-                  <div className="text-sm font-semibold text-amber-300">
-                    {stat.restartingInstances}
-                  </div>
-                  <div className="text-[10px] text-slate-400">Restarting</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-slate-200">Services Overview by Profile</h2>
+        
+        {/* Environment Filter Dropdown */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="env-filter" className="text-sm text-slate-400">
+            Filter by Environment:
+          </label>
+          <select
+            id="env-filter"
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 shadow-inner focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+            value={environmentFilter}
+            onChange={(e) => onEnvironmentFilterChange(e.target.value as EnvironmentFilter)}
+          >
+            <option value="ALL">All Environments</option>
+            <option value="DEV">Development</option>
+            <option value="STAGING">Staging / UAT</option>
+            <option value="PROD_COB">Production / COB</option>
+          </select>
+        </div>
       </div>
+      
+      {/* Render grouped by environment type */}
+      {envOrder.map(envType => {
+        const envStats = groupedStats[envType];
+        if (!envStats || envStats.length === 0) return null;
+        
+        return (
+          <div key={envType} className="mb-6">
+            {/* Environment Type Header */}
+            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+              {envTypeLabels[envType]}
+              <span className="text-xs font-normal text-slate-500">({envStats.length} profile{envStats.length !== 1 ? 's' : ''})</span>
+            </h3>
+            
+            {/* Profile Cards Grid */}
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {envStats.map((stat) => {
+                const isSelected = activeProfiles.includes(stat.profile);
+                const profileConfig = getProfileConfig(stat.profile);
+                
+                return (
+                  <div
+                    key={stat.profile}
+                    onClick={() => onProfileClick(stat.profile)}
+                    className={`
+                      rounded-xl border p-4 shadow-inner transition-all cursor-pointer hover:shadow-lg
+                      ${profileConfig.bgClass} hover:scale-[1.02]
+                      ${isSelected 
+                        ? "ring-2 ring-emerald-400/70 ring-offset-2 ring-offset-slate-950 shadow-lg shadow-emerald-400/20" 
+                        : ""
+                      }
+                    `}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="text-sm font-semibold text-slate-100">
+                          {stat.profile}
+                        </h4>
+                        <span className={`text-xs font-medium ${getHealthColor(stat.healthPercentage)}`}>
+                          {stat.healthPercentage}%
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {stat.totalServices} services • {stat.totalInstances} instances
+                      </div>
+                    </div>
+                    
+                    <div className="grid gap-4 grid-cols-3">
+                      <div className="text-center">
+                        <div className="text-sm font-semibold text-emerald-300">
+                          {stat.runningInstances}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Running</div>
+                      </div>
+                      
+                      <div className="text-center">
+                        <div className="text-sm font-semibold text-rose-300">
+                          {stat.degradedInstances}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Degraded</div>
+                      </div>
+                      
+                      <div className="text-center">
+                        <div className="text-sm font-semibold text-amber-300">
+                          {stat.restartingInstances}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Restarting</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

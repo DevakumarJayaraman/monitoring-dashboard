@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { JSX } from "react";
-import type { ServicesInstance, ServiceProfileKey, ServiceStatus } from "../../types/infrastructure";
-import { profileLabels } from "../../features/infrastructure/config";
+import type { ServicesInstance, ServiceStatus } from "../../types/infrastructure";
 
 export interface ActionConfirmationModalProps {
   isOpen: boolean;
@@ -77,9 +76,6 @@ export function ActionConfirmationModal({
     return "bg-rose-400/10 text-rose-300 border border-rose-400/20";
   };
 
-  const formatProfileLabel = (profile: ServiceProfileKey): string => 
-    profileLabels[profile] ?? profile.toUpperCase();
-
   // Group instances by service for better display
   const instancesByService = instances.reduce((acc, instance) => {
     const serviceName = instance.serviceName 
@@ -135,12 +131,11 @@ export function ActionConfirmationModal({
                         {serviceInstances.map((instance) => {
                           const status = normaliseStatus(instance);
                           const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
-                          const profileLabel = formatProfileLabel(instance.profile);
                           return (
                             <div key={instance.id} className="space-y-1 rounded border border-slate-800 bg-slate-900/50 px-3 py-2">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className="text-sm font-medium text-slate-200">
-                                  {instance.serviceName || serviceName} - {profileLabel} - {instance.machineName}
+                                  {instance.serviceName || serviceName} - {instance.profile} - {instance.machineName}
                                 </span>
                                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(status)}`}>
                                   {statusLabel}

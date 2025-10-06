@@ -1,17 +1,97 @@
+import { useEffect, useState, useMemo } from "react";
 import type { JSX } from "react";
-import type { ServiceProfileKey } from "../../types/infrastructure";
-import { profileLabels, profileOrder } from "../../features/infrastructure/config";
+import type { ServiceProfileKey, ServicesInstance } from "../../types/infrastructure";
+import { profileOrder } from "../../features/infrastructure/config";
+import { fetchAllProfiles } from "../../services/api";
+import type { EnvironmentFilter } from "./ServicesSummary";
 
 type ProfileSelectorProps = {
   value: ServiceProfileKey[];
   onChange: (profiles: ServiceProfileKey[]) => void;
+  environmentFilter: EnvironmentFilter;
+  servicesInstances: ServicesInstance[];
 };
 
-export function ProfileSelector({ value, onChange }: ProfileSelectorProps): JSX.Element {
+export function ProfileSelector({ value, onChange, environmentFilter, servicesInstances }: ProfileSelectorProps): JSX.Element {
+  const [availableProfiles, setAvailableProfiles] = useState<string[]>(profileOrder);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Build profile to environment type mapping from servicesInstances
+  const profileEnvMap = useMemo(() => {
+    const envMap: Record<string, string> = {};
+    servicesInstances.forEach((instance) => {
+      if (instance.profile && instance.envType) {
+        envMap[instance.profile] = instance.envType;
+      }
+    });
+    return envMap;
+  }, [servicesInstances]);
+
+  // Load profiles from backend
+  useEffect(() => {
+    const loadProfiles = async () => {
+      try {
+        const backendProfiles = await fetchAllProfiles();
+        // Combine with "all" and sort
+        const allProfiles = ["all", ...backendProfiles.sort()];
+        setAvailableProfiles(allProfiles);
+      } catch (error) {
+        console.error('Failed to load profiles, using defaults:', error);
+        // Fallback to default profiles
+        setAvailableProfiles(profileOrder);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadProfiles();
+  }, []);
+  
+  // Filter profiles based on environment filter
+  const filteredProfiles = useMemo(() => {
+    if (environmentFilter === 'ALL') {
+      return availableProfiles;
+    }
+    
+    // Always include "all" button
+    const filtered = ["all"];
+    
+    availableProfiles.forEach(profile => {
+      if (profile === "all") return; // Already added
+      
+      const envType = profileEnvMap[profile];
+      if (!envType) {
+        // If no env mapping, include it (backwards compatibility)
+        filtered.push(profile);
+        return;
+      }
+      
+      // Match based on filter
+      if (environmentFilter === 'DEV' && envType === 'DEV') {
+        filtered.push(profile);
+      } else if (environmentFilter === 'STAGING' && envType === 'STAGING') {
+        filtered.push(profile);
+      } else if (environmentFilter === 'PROD_COB' && (envType === 'PROD' || envType === 'COB')) {
+        filtered.push(profile);
+      }
+    });
+    
+    return filtered;
+  }, [availableProfiles, environmentFilter, profileEnvMap]);
+  
   const handleToggle = (profile: ServiceProfileKey) => {
     if (profile === "all") {
-      // If "all" is clicked, toggle between "all" only and empty selection
-      onChange(value.includes("all") ? [] : ["all"]);
+      // If "all" is clicked, select all filtered profiles (excluding "all" itself)
+      const allFilteredProfiles = filteredProfiles.filter(p => p !== "all") as ServiceProfileKey[];
+      
+      // If all filtered profiles are already selected, deselect them
+      const allSelected = allFilteredProfiles.every(p => value.includes(p));
+      
+      if (allSelected) {
+        onChange([]);
+      } else {
+        onChange(allFilteredProfiles);
+      }
     } else {
       // For specific profiles
       const currentWithoutAll = value.filter(p => p !== "all");
@@ -27,12 +107,30 @@ export function ProfileSelector({ value, onChange }: ProfileSelectorProps): JSX.
     }
   };
 
-  const isSelected = (profile: ServiceProfileKey) => value.includes(profile);
+  const isSelected = (profile: ServiceProfileKey) => {
+    if (profile === "all") {
+      // "all" is selected if all filtered profiles (excluding "all" itself) are selected
+      const allFilteredProfiles = filteredProfiles.filter(p => p !== "all");
+      return allFilteredProfiles.length > 0 && allFilteredProfiles.every(p => value.includes(p));
+    }
+    return value.includes(profile);
+  };
 
   const buttonClass = (profile: ServiceProfileKey) =>
     isSelected(profile)
       ? "border-transparent bg-emerald-400/90 text-emerald-950 shadow-sm"
       : "border border-slate-700 bg-slate-900 text-slate-300 hover:border-emerald-400/60 hover:text-emerald-200";
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-3">
+        <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Profile
+        </label>
+        <div className="text-sm text-slate-500">Loading profiles...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -45,17 +143,17 @@ export function ProfileSelector({ value, onChange }: ProfileSelectorProps): JSX.
           role="group"
           aria-label="Service profiles"
         >
-          {profileOrder.map((profile) => (
+          {filteredProfiles.map((profile) => (
             <button
               key={profile}
               type="button"
               className={`whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40 ${buttonClass(
-                profile
+                profile as ServiceProfileKey
               )}`}
-              onClick={() => handleToggle(profile)}
-              aria-pressed={isSelected(profile)}
+              onClick={() => handleToggle(profile as ServiceProfileKey)}
+              aria-pressed={isSelected(profile as ServiceProfileKey)}
             >
-              {profileLabels[profile]}
+              {profile}
             </button>
           ))}
         </div>
@@ -71,9 +169,9 @@ export function ProfileSelector({ value, onChange }: ProfileSelectorProps): JSX.
             }}
           >
             <option value="">{value.length === 0 ? "Select profiles" : `${value.length} selected`}</option>
-            {profileOrder.map((profile) => (
+            {filteredProfiles.map((profile) => (
               <option key={profile} value={profile}>
-                {profileLabels[profile]} {isSelected(profile) ? "✓" : ""}
+                {profile} {isSelected(profile as ServiceProfileKey) ? "✓" : ""}
               </option>
             ))}
           </select>

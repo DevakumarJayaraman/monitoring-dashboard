@@ -79,16 +79,30 @@ export const serviceStatusConfig: Record<ServiceStatus, { label: string; toneCla
   },
 };
 
-export const profileLabels: Record<ServiceProfileKey, string> = {
+export const profileLabels: Record<string, string> = {
+  // APAC
   apacqa: "APAC QA",
   apacuat: "APAC UAT",
   apacdailyrefresh: "APAC Daily",
+  apacprod: "APAC Production",
+  apaccob: "APAC DR",
+  
+  // EMEA
   emeaqa: "EMEA QA",
   emeauat: "EMEA UAT",
   emeadailyrefresh: "EMEA Daily",
+  emeaprod: "EMEA Production",
+  emeacob: "EMEA DR",
+  
+  // NAM
   namqa: "NAM QA",
   namuat: "NAM UAT",
   namdailyrefresh: "NAM Daily",
+  namprod: "NAM Production",
+  namcob: "NAM DR",
+  
+  // Other
+  dev: "Development",
   all: "All",
 };
 

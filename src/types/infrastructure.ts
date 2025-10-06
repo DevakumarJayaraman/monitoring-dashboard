@@ -31,13 +31,21 @@ export type ServiceProfileKey =
   | "apacqa"
   | "apacuat"
   | "apacdailyrefresh"
+  | "apacprod"
+  | "apaccob"
   | "emeaqa"
   | "emeauat"
   | "emeadailyrefresh"
+  | "emeaprod"
+  | "emeacob"
   | "namqa"
   | "namuat"
   | "namdailyrefresh"
-  | "all";
+  | "namprod"
+  | "namcob"
+  | "dev"
+  | "all"
+  | string; // Allow any string to support dynamic profiles from backend
 
 export type ServiceInstanceDetail = {
   id: string;
@@ -65,6 +73,7 @@ export type ServicesInstance = {
   Port: number;
   infraType: InfraType;
   profile: ServiceProfileKey;
+  envType?: string; // DEV, STAGING, PROD, COB
   uptime: number;
   version: string;
   logURL: string;
