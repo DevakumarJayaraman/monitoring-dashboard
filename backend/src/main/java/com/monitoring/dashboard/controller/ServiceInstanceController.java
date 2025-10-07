@@ -1,5 +1,7 @@
 package com.monitoring.dashboard.controller;
 
+import com.monitoring.dashboard.dto.ServiceActionRequest;
+import com.monitoring.dashboard.dto.ServiceActionResponse;
 import com.monitoring.dashboard.dto.ServiceInstanceDTO;
 import com.monitoring.dashboard.service.ServiceInstanceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -150,5 +152,37 @@ public class ServiceInstanceController {
         log.info("DELETE /api/services/instances/{} - Deleting service instance", id);
         serviceInstanceService.deleteServiceInstance(id);
         return ResponseEntity.noContent().build();
+    }
+    
+    /**
+     * Start multiple service instances.
+     */
+    @PostMapping("/actions/start")
+    @Operation(summary = "Start service instances", description = "Starts multiple service instances by their IDs")
+    public ResponseEntity<List<ServiceActionResponse>> startServiceInstances(
+            @RequestBody ServiceActionRequest request) {
+        log.info("POST /api/services/actions/start - Starting {} service instances", request.getInstanceIds().size());
+        List<ServiceActionResponse> responses = serviceInstanceService.startServiceInstances(request);
+        
+        long successCount = responses.stream().filter(ServiceActionResponse::isSuccess).count();
+        log.info("Start action completed: {} successful, {} failed", successCount, responses.size() - successCount);
+        
+        return ResponseEntity.ok(responses);
+    }
+    
+    /**
+     * Stop multiple service instances.
+     */
+    @PostMapping("/actions/stop")
+    @Operation(summary = "Stop service instances", description = "Stops multiple service instances by their IDs")
+    public ResponseEntity<List<ServiceActionResponse>> stopServiceInstances(
+            @RequestBody ServiceActionRequest request) {
+        log.info("POST /api/services/actions/stop - Stopping {} service instances", request.getInstanceIds().size());
+        List<ServiceActionResponse> responses = serviceInstanceService.stopServiceInstances(request);
+        
+        long successCount = responses.stream().filter(ServiceActionResponse::isSuccess).count();
+        log.info("Stop action completed: {} successful, {} failed", successCount, responses.size() - successCount);
+        
+        return ResponseEntity.ok(responses);
     }
 }

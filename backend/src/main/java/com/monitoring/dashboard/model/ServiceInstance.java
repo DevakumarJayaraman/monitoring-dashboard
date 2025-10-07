@@ -42,7 +42,7 @@ public class ServiceInstance {
     private Integer uptimeSeconds;
 
     @Column(name = "status", length = 20)
-    private String status; // running, degraded, restarting
+    private String status; // running, degraded, restarting, starting, stopping, stopped
 
     @Column(name = "logUrl", length = 500)
     private String logUrl;

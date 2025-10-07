@@ -12,7 +12,7 @@ export type InfraType = "linux" | "windows" | "ecs";
 
 export type StatusLevel = "healthy" | "watch" | "scaling";
 
-export type ServiceStatus = "running" | "degraded" | "restarting";
+export type ServiceStatus = "running" | "degraded" | "restarting" | "starting" | "stopping" | "stopped";
 
 export type InfraTypeConfig = {
   label: string;

@@ -13,7 +13,7 @@ export interface ApiServiceInstance {
   metricsURL: string;
   port: number; // lowercase to match backend DTO standard conventions
   uptime: number; // in minutes
-  status?: 'running' | 'degraded' | 'restarting';
+  status?: 'running' | 'degraded' | 'restarting' | 'stopped' | 'starting' | 'stopping';
 }
 
 export interface ApiInfraDetail {
@@ -306,4 +306,59 @@ export async function fetchEnvironmentsByEnvCode(envCode: string): Promise<Proje
     throw new Error(`Failed to fetch environments for code ${envCode}: ${response.statusText}`);
   }
   return response.json();
+}
+
+// Service Control API calls
+export interface ServiceActionRequest {
+  instanceIds: string[];
+}
+
+export interface ServiceActionResponse {
+  instanceId: string;
+  serviceName: string;
+  success: boolean;
+  message: string;
+  newStatus?: 'running' | 'degraded' | 'restarting' | 'stopped' | 'starting' | 'stopping';
+}
+
+export async function startServiceInstances(instanceIds: string[]): Promise<ServiceActionResponse[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/services/actions/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ instanceIds }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to start service instances: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error starting service instances:', error);
+    throw error;
+  }
+}
+
+export async function stopServiceInstances(instanceIds: string[]): Promise<ServiceActionResponse[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/services/actions/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ instanceIds }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to stop service instances: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error stopping service instances:', error);
+    throw error;
+  }
 }

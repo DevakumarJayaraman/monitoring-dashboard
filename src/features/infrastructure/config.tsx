@@ -73,9 +73,21 @@ export const serviceStatusConfig: Record<ServiceStatus, { label: string; toneCla
     label: "Degraded",
     toneClassName: "bg-amber-500/10 text-amber-200 ring-1 ring-inset ring-amber-400/40",
   },
+  stopped: {
+    label: "Stopped",
+    toneClassName: "bg-rose-500/10 text-rose-200 ring-1 ring-inset ring-rose-400/40",
+  },
   restarting: {
     label: "Restarting",
     toneClassName: "bg-sky-500/10 text-sky-200 ring-1 ring-inset ring-sky-400/40",
+  },
+  starting: {
+    label: "Starting",
+    toneClassName: "bg-cyan-500/10 text-cyan-200 ring-1 ring-inset ring-cyan-400/40",
+  },
+  stopping: {
+    label: "Stopping",
+    toneClassName: "bg-orange-500/10 text-orange-200 ring-1 ring-inset ring-orange-400/40",
   },
 };
 

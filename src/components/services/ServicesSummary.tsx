@@ -30,9 +30,11 @@ interface ServicesSummaryProps {
 
 const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
   const raw = instance.status?.toLowerCase();
+  if (raw === "starting") return "starting";
+  if (raw === "stopping") return "stopping";
   if (raw === "degraded") return "degraded";
   if (raw === "restarting") return "restarting";
-  if (raw === "stopped") return "degraded";
+  if (raw === "stopped") return "stopped";
   if ((raw === "running" || raw === undefined) && instance.uptime <= 0) return "restarting";
   return "running";
 };

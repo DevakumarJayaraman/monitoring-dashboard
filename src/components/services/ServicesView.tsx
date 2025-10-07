@@ -17,7 +17,12 @@ import type {
   ServicesInstance,
   ServiceStatus,
 } from "../../types/infrastructure";
-import { fetchAllServiceInstances } from "../../services/api";
+import { 
+  fetchAllServiceInstances, 
+  startServiceInstances, 
+  stopServiceInstances,
+  type ServiceActionResponse 
+} from "../../services/api";
 
 type ServiceCard = {
   name: string;
@@ -33,6 +38,8 @@ type ServiceVariant = {
 
 const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
   const raw = instance.status?.toLowerCase();
+  if (raw === "starting") return "starting";
+  if (raw === "stopping") return "stopping";
   if (raw === "degraded") return "degraded";
   if (raw === "restarting") return "restarting";
   if (raw === "stopped") return "degraded";
@@ -48,6 +55,7 @@ export function ServicesView(): JSX.Element {
   const [selectedServiceKey, setSelectedServiceKey] = useState<string | null>(null);
   const [servicesInstances, setServicesInstances] = useState<ServicesInstance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Modal state
@@ -66,40 +74,45 @@ export function ServicesView(): JSX.Element {
   });
 
   // Load services from backend
-  useEffect(() => {
-    const loadServices = async () => {
-      try {
+  const loadServices = useCallback(async (showRefreshIndicator = false) => {
+    try {
+      if (showRefreshIndicator) {
+        setIsRefreshing(true);
+      } else {
         setIsLoading(true);
-        setError(null);
-        const apiInstances = await fetchAllServiceInstances();
-        
-        // Convert API instances to frontend format
-        const convertedInstances: ServicesInstance[] = apiInstances.map((api) => ({
-          id: api.id,
-          serviceName: api.serviceName,
-          machineName: api.machineName,
-          Port: api.port, // Convert lowercase port from API to uppercase Port for frontend
-          infraType: api.infraType,
-          profile: api.profile as ServiceProfileKey,
-          envType: api.envType, // Add environment type
-          uptime: api.uptime, // already in minutes from backend
-          version: api.version,
-          logURL: api.logURL,
-          metricsURL: api.metricsURL,
-          status: api.status,
-        }));
-        
-        setServicesInstances(convertedInstances);
-      } catch (err) {
-        console.error('Failed to load services:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load services');
-      } finally {
-        setIsLoading(false);
       }
-    };
-
-    loadServices();
+      setError(null);
+      const apiInstances = await fetchAllServiceInstances();
+      
+      // Convert API instances to frontend format
+      const convertedInstances: ServicesInstance[] = apiInstances.map((api) => ({
+        id: api.id,
+        serviceName: api.serviceName,
+        machineName: api.machineName,
+        Port: api.port, // Convert lowercase port from API to uppercase Port for frontend
+        infraType: api.infraType,
+        profile: api.profile as ServiceProfileKey,
+        envType: api.envType, // Add environment type
+        uptime: api.uptime, // already in minutes from backend
+        version: api.version,
+        logURL: api.logURL,
+        metricsURL: api.metricsURL,
+        status: api.status,
+      }));
+      
+      setServicesInstances(convertedInstances);
+    } catch (err) {
+      console.error('Failed to load services:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load services');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadServices();
+  }, [loadServices]);
 
   const serviceSummaryMap = useMemo(
     () => new Map<string, string>(Object.entries(serviceSummaryByName)),
@@ -371,33 +384,74 @@ export function ServicesView(): JSX.Element {
       return [];
     }
 
-    // Simulate API calls with realistic delays and some failures
-    const results: ActionResult[] = [];
+    const instanceIds = modalState.instances.map(instance => instance.id);
+    const optimisticStatus: ServiceStatus = modalState.action === 'start' ? 'starting' : 'stopping';
     
-    for (const instance of modalState.instances) {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));
+    // Optimistically update status to starting/stopping
+    setServicesInstances(prevInstances => 
+      prevInstances.map(instance => 
+        instanceIds.includes(instance.id) 
+          ? { ...instance, status: optimisticStatus }
+          : instance
+      )
+    );
+
+    try {
+      // Make actual API call
+      const apiResults: ServiceActionResponse[] = modalState.action === 'start'
+        ? await startServiceInstances(instanceIds)
+        : await stopServiceInstances(instanceIds);
       
-      // Simulate 90% success rate
-      const success = Math.random() > 0.1;
-      const serviceName = modalState.serviceNames.find(name => instance.id.includes(name)) || 'Unknown Service';
+      // Update status based on API response
+      setServicesInstances(prevInstances => 
+        prevInstances.map(instance => {
+          const result = apiResults.find(r => r.instanceId === instance.id);
+          if (result && result.newStatus) {
+            return { ...instance, status: result.newStatus };
+          }
+          return instance;
+        })
+      );
       
-      results.push({
+      // Convert API response to ActionResult format
+      const results: ActionResult[] = apiResults.map(apiResult => ({
+        instanceId: apiResult.instanceId,
+        serviceName: apiResult.serviceName,
+        success: apiResult.success,
+        message: apiResult.message
+      }));
+      
+      // Clear selections after successful action
+      if (modalState.actionType === 'selected') {
+        setSelectedInstances({});
+      }
+      
+      // Refresh data after a short delay to get updated status
+      setTimeout(() => {
+        loadServices(true);
+      }, 2000);
+      
+      return results;
+    } catch (error) {
+      console.error('Service action failed:', error);
+      
+      // Revert optimistic updates on error
+      setServicesInstances(prevInstances => 
+        prevInstances.map(instance => 
+          instanceIds.includes(instance.id) 
+            ? { ...instance, status: modalState.instances.find(i => i.id === instance.id)?.status }
+            : instance
+        )
+      );
+      
+      // Return error results
+      return modalState.instances.map(instance => ({
         instanceId: instance.id,
-        serviceName,
-        success,
-        message: success 
-          ? `${modalState.action === 'start' ? 'Started' : 'Stopped'} successfully`
-          : `Failed to ${modalState.action}: Service unavailable`
-      });
+        serviceName: instance.serviceName,
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to perform action'
+      }));
     }
-    
-    // Clear selections after successful action
-    if (modalState.actionType === 'selected') {
-      setSelectedInstances({});
-    }
-    
-    return results;
   };
 
   // Calculate stats for all visible services
@@ -477,6 +531,27 @@ export function ServicesView(): JSX.Element {
             />
           </label>
           <div className="flex items-center gap-2">
+            {/* Refresh Button */}
+            <button
+              type="button"
+              className={`inline-flex items-center gap-1.5 rounded-full border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 hover:text-slate-200 ${
+                isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              onClick={() => loadServices(true)}
+              disabled={isRefreshing}
+              title="Refresh service status"
+            >
+              <svg 
+                className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            
             {/* Start/Stop All Services Buttons */}
             <div className="flex items-center gap-2 border-r border-slate-700 pr-3">
               <button
@@ -515,7 +590,7 @@ export function ServicesView(): JSX.Element {
       {/* Split Screen Layout */}
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Left Side - Service Cards */}
-        <div className="space-y-6">
+        <div className="space-y-6 p-0.5">
           {activeProfiles.length > 0 ? (
             filteredServices.map((service) => {
           const serviceKey = `${service.profile}-${service.name}`;
@@ -608,8 +683,8 @@ export function ServicesView(): JSX.Element {
           )}
         </div>
         
-        {/* Right Side - Instance Details */}
-        <div className="space-y-6">
+        {/* Right Side - Instance Details (Sticky) */}
+        <div className="lg:sticky lg:top-6 lg:self-start space-y-6 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900 lg:pr-1">
           {selectedService ? (
             <Card
               title={`${selectedService.name} - Instance Details`}

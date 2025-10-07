@@ -1,5 +1,7 @@
 package com.monitoring.dashboard.service;
 
+import com.monitoring.dashboard.dto.ServiceActionRequest;
+import com.monitoring.dashboard.dto.ServiceActionResponse;
 import com.monitoring.dashboard.dto.ServiceInstanceDTO;
 import com.monitoring.dashboard.model.ProjectEnvironment;
 import com.monitoring.dashboard.model.ServiceInstance;
@@ -10,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -187,6 +190,164 @@ public class ServiceInstanceService {
         dto.setMetricsURL(instance.getMetricsUrl());
         dto.setStatus(instance.getStatus());
         return dto;
+    }
+    
+    /**
+     * Start multiple service instances.
+     * Updates status to 'starting' initially, then simulates actual start and updates to 'running'.
+     */
+    @Transactional
+    public List<ServiceActionResponse> startServiceInstances(ServiceActionRequest request) {
+        List<ServiceActionResponse> responses = new ArrayList<>();
+        
+        for (String instanceId : request.getInstanceIds()) {
+            try {
+                ServiceInstance instance = serviceInstanceRepository.findById(instanceId)
+                        .orElseThrow(() -> new RuntimeException("Service instance not found: " + instanceId));
+                
+                // Check if already running
+                if ("running".equalsIgnoreCase(instance.getStatus())) {
+                    responses.add(new ServiceActionResponse(
+                            instanceId,
+                            instance.getServiceName(),
+                            false,
+                            "Service is already running",
+                            "running"
+                    ));
+                    continue;
+                }
+                
+                // Set status to starting
+                instance.setStatus("starting");
+                serviceInstanceRepository.save(instance);
+                log.info("Starting service instance: {} ({})", instance.getServiceName(), instanceId);
+                
+                // Simulate actual start operation
+                // In a real implementation, this would call the actual service management API
+                // For now, we'll simulate a quick operation and set to running
+                try {
+                    // Simulate start delay (100-500ms)
+                    Thread.sleep(100 + (long)(Math.random() * 400));
+                    
+                    // Update to running status
+                    instance.setStatus("running");
+                    instance.setUptimeSeconds(0); // Reset uptime
+                    serviceInstanceRepository.save(instance);
+                    
+                    responses.add(new ServiceActionResponse(
+                            instanceId,
+                            instance.getServiceName(),
+                            true,
+                            "Service started successfully",
+                            "running"
+                    ));
+                    log.info("Successfully started service instance: {} ({})", instance.getServiceName(), instanceId);
+                    
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    instance.setStatus("degraded");
+                    serviceInstanceRepository.save(instance);
+                    responses.add(new ServiceActionResponse(
+                            instanceId,
+                            instance.getServiceName(),
+                            false,
+                            "Failed to start service: " + e.getMessage(),
+                            "degraded"
+                    ));
+                }
+                
+            } catch (Exception e) {
+                log.error("Error starting service instance {}: {}", instanceId, e.getMessage());
+                responses.add(new ServiceActionResponse(
+                        instanceId,
+                        "Unknown",
+                        false,
+                        "Error: " + e.getMessage(),
+                        null
+                ));
+            }
+        }
+        
+        return responses;
+    }
+    
+    /**
+     * Stop multiple service instances.
+     * Updates status to 'stopping' initially, then simulates actual stop and updates to 'stopped'.
+     */
+    @Transactional
+    public List<ServiceActionResponse> stopServiceInstances(ServiceActionRequest request) {
+        List<ServiceActionResponse> responses = new ArrayList<>();
+        
+        for (String instanceId : request.getInstanceIds()) {
+            try {
+                ServiceInstance instance = serviceInstanceRepository.findById(instanceId)
+                        .orElseThrow(() -> new RuntimeException("Service instance not found: " + instanceId));
+                
+                // Check if already stopped
+                if ("stopped".equalsIgnoreCase(instance.getStatus())) {
+                    responses.add(new ServiceActionResponse(
+                            instanceId,
+                            instance.getServiceName(),
+                            false,
+                            "Service is already stopped",
+                            "stopped"
+                    ));
+                    continue;
+                }
+                
+                // Set status to stopping
+                instance.setStatus("stopping");
+                serviceInstanceRepository.save(instance);
+                log.info("Stopping service instance: {} ({})", instance.getServiceName(), instanceId);
+                
+                // Simulate actual stop operation
+                // In a real implementation, this would call the actual service management API
+                // For now, we'll simulate a quick operation and set to stopped
+                try {
+                    // Simulate stop delay (100-500ms)
+                    Thread.sleep(100 + (long)(Math.random() * 400));
+                    
+                    // Update to stopped status
+                    instance.setStatus("stopped");
+                    instance.setUptimeSeconds(0); // Reset uptime
+                    serviceInstanceRepository.save(instance);
+                    
+                    responses.add(new ServiceActionResponse(
+                            instanceId,
+                            instance.getServiceName(),
+                            true,
+                            "Service stopped successfully",
+                            "stopped"
+                    ));
+                    log.info("Successfully stopped service instance: {} ({})", instance.getServiceName(), instanceId);
+                    
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    instance.setStatus("degraded");
+                    serviceInstanceRepository.save(instance);
+                    responses.add(new ServiceActionResponse(
+                            instanceId,
+                            instance.getServiceName(),
+                            false,
+                            "Failed to stop service: " + e.getMessage(),
+                            "degraded"
+                    ));
+                }
+                
+            } catch (Exception e) {
+                log.error("Error stopping service instance {}: {}", instanceId, e.getMessage());
+                responses.add(new ServiceActionResponse(
+                        instanceId,
+                        "Unknown",
+                        false,
+                        "Error: " + e.getMessage(),
+                        null
+                ));
+            }
+        }
+        
+        return responses;
     }
     
     /**

@@ -48,7 +48,7 @@ export function Card({
       : description;
 
   const interactiveClassName = onClick
-    ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40 hover:border-emerald-400/70 hover:shadow-emerald-400/15 hover:scale-[1.02]"
+    ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 hover:border-emerald-400/70 hover:shadow-emerald-400/15 hover:scale-[1.02]"
     : undefined;
   const activeClassName = isActive
     ? "border-emerald-300 ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-slate-950 shadow-lg shadow-emerald-400/20 bg-slate-900/60"

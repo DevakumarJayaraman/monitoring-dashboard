@@ -59,9 +59,11 @@ export function ActionConfirmationModal({
 
   const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
     const raw = instance.status?.toLowerCase();
+    if (raw === "starting") return "starting";
+    if (raw === "stopping") return "stopping";
     if (raw === "degraded") return "degraded";
     if (raw === "restarting") return "restarting";
-    if (raw === "stopped") return "degraded";
+    if (raw === "stopped") return "stopped";
     if ((raw === "running" || raw === undefined) && instance.uptime <= 0) return "restarting";
     return "running";
   };
@@ -71,9 +73,18 @@ export function ActionConfirmationModal({
       return "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20";
     }
     if (status === "restarting") {
-      return "bg-amber-400/10 text-amber-300 border border-amber-400/20";
+      return "bg-sky-400/10 text-sky-300 border border-sky-400/20";
     }
-    return "bg-rose-400/10 text-rose-300 border border-rose-400/20";
+    if (status === "starting") {
+      return "bg-cyan-400/10 text-cyan-300 border border-cyan-400/20";
+    }
+    if (status === "stopping") {
+      return "bg-orange-400/10 text-orange-300 border border-orange-400/20";
+    }
+    if (status === "stopped") {
+      return "bg-rose-400/10 text-rose-300 border border-rose-400/20";
+    }
+    return "bg-amber-400/10 text-amber-300 border border-amber-400/20"; // degraded
   };
 
   // Group instances by service for better display
