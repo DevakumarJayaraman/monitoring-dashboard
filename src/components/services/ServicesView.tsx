@@ -57,11 +57,12 @@ export function ServicesView(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isActionInProgress, setIsActionInProgress] = useState(false);
   
   // Modal state
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
-    action: "start" | "stop";
+    action: "start" | "stop" | "restart";
     actionType: "all" | "selected";
     instances: ServicesInstance[];
     serviceNames: string[];
@@ -303,7 +304,7 @@ export function ServicesView(): JSX.Element {
     return "text-amber-200 bg-amber-500/10 border border-amber-400/40";
   };
 
-  const handleServiceSelectionAction = (serviceKey: string, action: "start" | "stop") => {
+  const handleServiceSelectionAction = (serviceKey: string, action: "start" | "stop" | "restart") => {
     const service = filteredServices.find(s => `${s.profile}-${s.name}` === serviceKey);
     if (!service) {
       return;
@@ -313,7 +314,15 @@ export function ServicesView(): JSX.Element {
     const eligibleInstances = service.instances.filter(instance => {
       if (!instanceIds.includes(instance.id)) return false;
       const status = normaliseStatus(instance);
-      return action === "start" ? status !== "running" : status === "running";
+      
+      // Filter based on action type:
+      // start: only degraded instances
+      // stop: running OR starting OR restarting instances
+      // restart: only running instances
+      if (action === "start") return status === "degraded";
+      if (action === "stop") return status === "running" || status === "starting" || status === "restarting";
+      if (action === "restart") return status === "running";
+      return false;
     });
 
     if (eligibleInstances.length === 0) {
@@ -331,17 +340,17 @@ export function ServicesView(): JSX.Element {
   };
 
   const handleStartAll = () => {
-    // Get all stopped instances in the current filtered view
-    const instances = filteredServices.flatMap(service => 
-      service.instances.filter(instance => normaliseStatus(instance) !== "running")
+    // Get all degraded instances from services for global actions (selected service or all filtered services)
+    const instances = servicesForGlobalActions.flatMap(service => 
+      service.instances.filter(instance => normaliseStatus(instance) === "degraded")
     );
     
     if (instances.length === 0) {
-      console.log('No stopped instances to start');
+      console.log('No degraded instances to start');
       return;
     }
     
-    const serviceNames = filteredServices.map(service => service.name);
+    const serviceNames = servicesForGlobalActions.map(service => service.name);
     
     setModalState({
       isOpen: true,
@@ -353,21 +362,46 @@ export function ServicesView(): JSX.Element {
   };
 
   const handleStopAll = () => {
-    // Get all running instances in the current filtered view
-    const instances = filteredServices.flatMap(service => 
-      service.instances.filter(instance => normaliseStatus(instance) === "running")
+    // Get all running, starting, or restarting instances from services for global actions
+    const instances = servicesForGlobalActions.flatMap(service => 
+      service.instances.filter(instance => {
+        const status = normaliseStatus(instance);
+        return status === "running" || status === "starting" || status === "restarting";
+      })
     );
     
     if (instances.length === 0) {
-      console.log('No running instances to stop');
+      console.log('No running/starting/restarting instances to stop');
       return;
     }
     
-    const serviceNames = filteredServices.map(service => service.name);
+    const serviceNames = servicesForGlobalActions.map(service => service.name);
     
     setModalState({
       isOpen: true,
       action: "stop", 
+      actionType: "all",
+      instances,
+      serviceNames
+    });
+  };
+
+  const handleRestartAll = () => {
+    // Get all running instances from services for global actions
+    const instances = servicesForGlobalActions.flatMap(service => 
+      service.instances.filter(instance => normaliseStatus(instance) === "running")
+    );
+    
+    if (instances.length === 0) {
+      console.log('No running instances to restart');
+      return;
+    }
+    
+    const serviceNames = servicesForGlobalActions.map(service => service.name);
+    
+    setModalState({
+      isOpen: true,
+      action: "restart",
       actionType: "all",
       instances,
       serviceNames
@@ -384,8 +418,13 @@ export function ServicesView(): JSX.Element {
       return [];
     }
 
+    // Set action in progress to disable buttons
+    setIsActionInProgress(true);
+
     const instanceIds = modalState.instances.map(instance => instance.id);
-    const optimisticStatus: ServiceStatus = modalState.action === 'start' ? 'starting' : 'stopping';
+    const optimisticStatus: ServiceStatus = 
+      modalState.action === 'start' ? 'starting' : 
+      modalState.action === 'stop' ? 'stopping' : 'starting'; // Restart also shows as 'starting'
     
     // Optimistically update status to starting/stopping
     setServicesInstances(prevInstances => 
@@ -397,10 +436,21 @@ export function ServicesView(): JSX.Element {
     );
 
     try {
-      // Make actual API call
-      const apiResults: ServiceActionResponse[] = modalState.action === 'start'
-        ? await startServiceInstances(instanceIds)
-        : await stopServiceInstances(instanceIds);
+      let apiResults: ServiceActionResponse[];
+      
+      // Handle different actions
+      if (modalState.action === 'restart') {
+        // For restart: first stop, then start
+        await stopServiceInstances(instanceIds);
+        // Wait a bit for services to stop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        apiResults = await startServiceInstances(instanceIds);
+      } else {
+        // Regular start or stop
+        apiResults = modalState.action === 'start'
+          ? await startServiceInstances(instanceIds)
+          : await stopServiceInstances(instanceIds);
+      }
       
       // Update status based on API response
       setServicesInstances(prevInstances => 
@@ -426,7 +476,10 @@ export function ServicesView(): JSX.Element {
         setSelectedInstances({});
       }
       
-      // Refresh data after a short delay to get updated status
+      // Immediate refresh to update summary and service lists
+      loadServices(false);
+      
+      // Additional refresh after a short delay to get final updated status from backend
       setTimeout(() => {
         loadServices(true);
       }, 2000);
@@ -451,19 +504,38 @@ export function ServicesView(): JSX.Element {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to perform action'
       }));
+    } finally {
+      // Re-enable buttons after action completes
+      setIsActionInProgress(false);
     }
   };
 
-  // Calculate stats for all visible services
-  const totalVisibleInstances = filteredServices.reduce((total, service) => total + service.instances.length, 0);
-  const runningVisibleInstances = filteredServices.reduce((total, service) => {
-    return total + service.instances.filter(instance => normaliseStatus(instance) === "running").length;
-  }, 0);
-  const stoppedVisibleInstances = totalVisibleInstances - runningVisibleInstances;
-  
+  // Determine which services to consider for global actions
   const selectedService = selectedServiceKey 
     ? filteredServices.find(s => `${s.profile}-${s.name}` === selectedServiceKey)
     : null;
+  
+  // When a service card is selected, only consider its instances; otherwise consider all filtered services
+  const servicesForGlobalActions = selectedService ? [selectedService] : filteredServices;
+
+  // Calculate stats for global action buttons
+  // Count degraded instances (for Start All button)
+  const degradedVisibleInstances = servicesForGlobalActions.reduce((total, service) => {
+    return total + service.instances.filter(instance => normaliseStatus(instance) === "degraded").length;
+  }, 0);
+  
+  // Count running OR starting OR restarting instances (for Stop All button)
+  const stoppableVisibleInstances = servicesForGlobalActions.reduce((total, service) => {
+    return total + service.instances.filter(instance => {
+      const status = normaliseStatus(instance);
+      return status === "running" || status === "starting" || status === "restarting";
+    }).length;
+  }, 0);
+  
+  // Count running instances (for Restart All button)
+  const restartableVisibleInstances = servicesForGlobalActions.reduce((total, service) => {
+    return total + service.instances.filter(instance => normaliseStatus(instance) === "running").length;
+  }, 0);
 
   // Show loading and error states
   if (isLoading) {
@@ -486,6 +558,7 @@ export function ServicesView(): JSX.Element {
     <div className="space-y-6">
       {/* Services Summary by Profile */}
       <ServicesSummary 
+        key={`summary-${servicesInstances.length}-${servicesInstances.map(i => i.status).join('-')}`}
         servicesInstances={servicesInstances}
         activeProfiles={activeProfiles}
         environmentFilter={environmentFilter}
@@ -552,33 +625,46 @@ export function ServicesView(): JSX.Element {
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
             
-            {/* Start/Stop All Services Buttons */}
+            {/* Start/Stop/Restart All Services Buttons */}
             <div className="flex items-center gap-2 border-r border-slate-700 pr-3">
               <button
                 type="button"
                 className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                  stoppedVisibleInstances > 0
+                  degradedVisibleInstances > 0 && !isActionInProgress
                     ? "border-emerald-400/50 text-emerald-200 hover:bg-emerald-400/10"
                     : "border-slate-700 text-slate-400 cursor-not-allowed"
                 }`}
                 onClick={handleStartAll}
-                disabled={stoppedVisibleInstances === 0}
-                title={`Start all ${stoppedVisibleInstances} stopped services`}
+                disabled={degradedVisibleInstances === 0 || isActionInProgress}
+                title={selectedService ? `Start all ${degradedVisibleInstances} degraded instances in ${selectedService.name}` : `Start all ${degradedVisibleInstances} degraded services`}
               >
-                ▶ Start All ({stoppedVisibleInstances})
+                ▶ Start All ({degradedVisibleInstances})
               </button>
               <button
                 type="button"
                 className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-                  runningVisibleInstances > 0
+                  stoppableVisibleInstances > 0 && !isActionInProgress
                     ? "border-rose-400/50 text-rose-200 hover:bg-rose-400/10"
                     : "border-slate-700 text-slate-400 cursor-not-allowed"
                 }`}
                 onClick={handleStopAll}
-                disabled={runningVisibleInstances === 0}
-                title={`Stop all ${runningVisibleInstances} running services`}
+                disabled={stoppableVisibleInstances === 0 || isActionInProgress}
+                title={selectedService ? `Stop all ${stoppableVisibleInstances} running/starting instances in ${selectedService.name}` : `Stop all ${stoppableVisibleInstances} running/starting services`}
               >
-                ■ Stop All ({runningVisibleInstances})
+                ■ Stop All ({stoppableVisibleInstances})
+              </button>
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                  restartableVisibleInstances > 0 && !isActionInProgress
+                    ? "border-cyan-400/50 text-cyan-200 hover:bg-cyan-400/10"
+                    : "border-slate-700 text-slate-400 cursor-not-allowed"
+                }`}
+                onClick={handleRestartAll}
+                disabled={restartableVisibleInstances === 0 || isActionInProgress}
+                title={selectedService ? `Restart all ${restartableVisibleInstances} running instances in ${selectedService.name}` : `Restart all ${restartableVisibleInstances} running services`}
+              >
+                ⟳ Restart All ({restartableVisibleInstances})
               </button>
             </div>
           </div>
@@ -722,40 +808,72 @@ export function ServicesView(): JSX.Element {
                       const selection = selectedInstances[selectedServiceKey!] ?? [];
                       const hasSelection = selection.length > 0;
                       const selectedInstanceDetails = selectedService.instances.filter(instance => selection.includes(instance.id));
-                      const startableSelectedCount = selectedInstanceDetails.filter(instance => normaliseStatus(instance) !== "running").length;
-                      const stoppableSelectedCount = selectedInstanceDetails.filter(instance => normaliseStatus(instance) === "running").length;
+                      
+                      // Start button: Only for Degraded instances
+                      const startableSelectedCount = selectedInstanceDetails.filter(instance => 
+                        normaliseStatus(instance) === "degraded"
+                      ).length;
+                      
+                      // Stop button: For Running OR Starting OR Restarting instances
+                      const stoppableSelectedCount = selectedInstanceDetails.filter(instance => {
+                        const status = normaliseStatus(instance);
+                        return status === "running" || status === "starting" || status === "restarting";
+                      }).length;
+                      
+                      // Restart button: Only for Running instances
+                      const restartableSelectedCount = selectedInstanceDetails.filter(instance => 
+                        normaliseStatus(instance) === "running"
+                      ).length;
                       
                       return hasSelection ? (
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
-                              startableSelectedCount > 0
+                              startableSelectedCount > 0 && !isActionInProgress
                                 ? "border-emerald-400/50 text-emerald-200 hover:bg-emerald-400/10"
                                 : "border-slate-700 text-slate-500 cursor-not-allowed"
                             }`}
-                            disabled={startableSelectedCount === 0}
+                            disabled={startableSelectedCount === 0 || isActionInProgress}
                             onClick={(event) => {
                               event.stopPropagation();
                               handleServiceSelectionAction(selectedServiceKey!, "start");
                             }}
+                            title="Start degraded instances"
                           >
                             ▶ Start ({startableSelectedCount})
                           </button>
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
-                              stoppableSelectedCount > 0
+                              stoppableSelectedCount > 0 && !isActionInProgress
                                 ? "border-rose-400/50 text-rose-200 hover:bg-rose-400/10"
                                 : "border-slate-700 text-slate-500 cursor-not-allowed"
                             }`}
-                            disabled={stoppableSelectedCount === 0}
+                            disabled={stoppableSelectedCount === 0 || isActionInProgress}
                             onClick={(event) => {
                               event.stopPropagation();
                               handleServiceSelectionAction(selectedServiceKey!, "stop");
                             }}
+                            title="Stop running/starting instances"
                           >
                             ■ Stop ({stoppableSelectedCount})
+                          </button>
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
+                              restartableSelectedCount > 0 && !isActionInProgress
+                                ? "border-cyan-400/50 text-cyan-200 hover:bg-cyan-400/10"
+                                : "border-slate-700 text-slate-500 cursor-not-allowed"
+                            }`}
+                            disabled={restartableSelectedCount === 0 || isActionInProgress}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleServiceSelectionAction(selectedServiceKey!, "restart");
+                            }}
+                            title="Restart running instances"
+                          >
+                            ⟳ Restart ({restartableSelectedCount})
                           </button>
                           <button
                             type="button"
@@ -931,12 +1049,14 @@ export function ServicesView(): JSX.Element {
       </div>
       
       <ActionConfirmationModal
+        key={`modal-${modalState.isOpen}-${modalState.action}-${modalState.instances.length}`}
         isOpen={modalState.isOpen}
         onClose={handleModalClose}
         onConfirm={handleModalConfirm}
         action={modalState.action}
         actionType={modalState.actionType}
         instances={modalState.instances}
+        currentInstances={servicesInstances}
         serviceNames={modalState.serviceNames}
       />
     </div>

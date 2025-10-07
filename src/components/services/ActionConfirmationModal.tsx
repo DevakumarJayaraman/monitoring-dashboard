@@ -6,10 +6,11 @@ export interface ActionConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => Promise<ActionResult[]>;
-  action: "start" | "stop";
+  action: "start" | "stop" | "restart";
   actionType: "all" | "selected";
   instances: ServicesInstance[];
   serviceNames?: string[];
+  currentInstances?: ServicesInstance[]; // NEW: Current state of all instances for status updates
 }
 
 export interface ActionResult {
@@ -27,6 +28,7 @@ export function ActionConfirmationModal({
   actionType,
   instances,
   serviceNames = [],
+  currentInstances, // NEW: Current state for status updates
 }: ActionConfirmationModalProps): JSX.Element {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -34,6 +36,13 @@ export function ActionConfirmationModal({
 
   if (!isOpen) return <></>;
 
+  // Merge current status into instances if currentInstances is provided
+  const displayInstances = currentInstances 
+    ? instances.map(instance => {
+        const current = currentInstances.find(ci => ci.id === instance.id);
+        return current ? { ...instance, status: current.status } : instance;
+      })
+    : instances;
   const handleConfirm = async () => {
     setIsProcessing(true);
     try {
@@ -54,8 +63,8 @@ export function ActionConfirmationModal({
     onClose();
   };
 
-  const actionVerb = action === "start" ? "Starting" : "Stopping";
-  const actionPastTense = action === "start" ? "started" : "stopped";
+  const actionVerb = action === "start" ? "Starting" : action === "stop" ? "Stopping" : "Starting"; // Restart shows as "Starting"
+  const actionPastTense = action === "start" ? "started" : action === "stop" ? "stopped" : "restarted";
 
   const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
     const raw = instance.status?.toLowerCase();
@@ -73,7 +82,7 @@ export function ActionConfirmationModal({
       return "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20";
     }
     if (status === "restarting") {
-      return "bg-sky-400/10 text-sky-300 border border-sky-400/20";
+      return "bg-cyan-400/10 text-cyan-300 border border-cyan-400/20"; // Same as starting
     }
     if (status === "starting") {
       return "bg-cyan-400/10 text-cyan-300 border border-cyan-400/20";
@@ -88,7 +97,7 @@ export function ActionConfirmationModal({
   };
 
   // Group instances by service for better display
-  const instancesByService = instances.reduce((acc, instance) => {
+  const instancesByService = displayInstances.reduce((acc, instance) => {
     const serviceName = instance.serviceName 
       || serviceNames.find(name => instance.id.includes(name)) 
       || "Unknown Service";
@@ -110,7 +119,7 @@ export function ActionConfirmationModal({
             {/* Confirmation View */}
             <div className="border-b border-slate-700 px-6 py-4">
               <h2 className="text-lg font-semibold text-slate-100">
-                Confirm {action === "start" ? "Start" : "Stop"} Action
+                Confirm {action === "start" ? "Start" : action === "stop" ? "Stop" : "Restart"} Action
               </h2>
               <p className="mt-1 text-sm text-slate-400">
                 {actionType === "all" 
@@ -124,7 +133,7 @@ export function ActionConfirmationModal({
                 <div className="flex items-center justify-center py-8">
                   <div className="text-center">
                     <div className="text-slate-400 text-sm">
-                      No {action === "start" ? "stopped" : "running"} instances found to {action}
+                      No {action === "start" ? "degraded" : action === "stop" ? "running/starting" : "running"} instances found to {action}
                     </div>
                     <div className="text-slate-500 text-xs mt-1">
                       {action === "start" 

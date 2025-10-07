@@ -275,10 +275,10 @@ export function ServicesSummary({
                       </div>
                       
                       <div className="text-center">
-                        <div className="text-sm font-semibold text-amber-300">
+                        <div className="text-sm font-semibold text-cyan-300">
                           {stat.restartingInstances}
                         </div>
-                        <div className="text-[10px] text-slate-400">Restarting</div>
+                        <div className="text-[10px] text-slate-400">Starting</div>
                       </div>
                     </div>
                   </div>

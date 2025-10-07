@@ -194,3 +194,12 @@ CREATE TABLE ops_deployment_configs (
     CONSTRAINT uk_service_infra_profile_resource 
         UNIQUE (service_id, infra_id, profile, resource_name)
 );
+
+## Service Instance statuses
+Starting/Running/Stopping/Degraded
+
+UI summary to show only: Running/ Degraded/ Starting
+Buttons : 
+Stop = Should stop running/Starting instances
+start = Should start Degraded instances.
+Restart = Should restart Running instances one shot.

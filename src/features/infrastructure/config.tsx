@@ -78,8 +78,8 @@ export const serviceStatusConfig: Record<ServiceStatus, { label: string; toneCla
     toneClassName: "bg-rose-500/10 text-rose-200 ring-1 ring-inset ring-rose-400/40",
   },
   restarting: {
-    label: "Restarting",
-    toneClassName: "bg-sky-500/10 text-sky-200 ring-1 ring-inset ring-sky-400/40",
+    label: "Starting",
+    toneClassName: "bg-cyan-500/10 text-cyan-200 ring-1 ring-inset ring-cyan-400/40",
   },
   starting: {
     label: "Starting",
