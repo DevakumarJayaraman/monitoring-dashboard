@@ -9,8 +9,8 @@ import { ActionConfirmationModal, type ActionResult } from "./ActionConfirmation
 import { ServiceGlyph } from "../../features/infrastructure/config";
 import {
   formatUptime,
-  serviceSummaryByName,
-} from "../../features/infrastructure/data";
+  getServiceSummaryByName,
+} from "../../features/infrastructure/data-api";
 import type {
   NonAllProfile,
   ServiceProfileKey,
@@ -54,6 +54,7 @@ export function ServicesView(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedServiceKey, setSelectedServiceKey] = useState<string | null>(null);
   const [servicesInstances, setServicesInstances] = useState<ServicesInstance[]>([]);
+  const [serviceSummaries, setServiceSummaries] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +84,12 @@ export function ServicesView(): JSX.Element {
         setIsLoading(true);
       }
       setError(null);
-      const apiInstances = await fetchAllServiceInstances();
+      
+      // Fetch both services instances and summaries
+      const [apiInstances, summaries] = await Promise.all([
+        fetchAllServiceInstances(),
+        getServiceSummaryByName()
+      ]);
       
       // Convert API instances to frontend format
       const convertedInstances: ServicesInstance[] = apiInstances.map((api) => ({
@@ -102,6 +108,7 @@ export function ServicesView(): JSX.Element {
       }));
       
       setServicesInstances(convertedInstances);
+      setServiceSummaries(summaries);
     } catch (err) {
       console.error('Failed to load services:', err);
       setError(err instanceof Error ? err.message : 'Failed to load services');
@@ -116,8 +123,8 @@ export function ServicesView(): JSX.Element {
   }, [loadServices]);
 
   const serviceSummaryMap = useMemo(
-    () => new Map<string, string>(Object.entries(serviceSummaryByName)),
-    []
+    () => new Map<string, string>(Object.entries(serviceSummaries)),
+    [serviceSummaries]
   );
 
   const serviceVariantsByName = useMemo(() => {

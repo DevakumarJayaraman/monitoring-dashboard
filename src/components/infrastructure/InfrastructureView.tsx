@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 import { Card } from "../Card";
 import { StatusPill, TypeBadge, ServiceStatusBadge } from "../shared/StatusIndicators";
@@ -7,7 +7,7 @@ import { SeparateProgressBars } from "../shared/SeparateProgressBars";
 import { InfraSummaryCard } from "../shared/EcsSummaryCard";
 import { HousekeepingModal, type HousekeepingInfo, type HousekeepingStep } from "./HousekeepingModal";
 import { infraTypeConfig } from "../../features/infrastructure/config";
-import { formatUptime, InfraDetails } from "../../features/infrastructure/data";
+import { formatUptime, getInfraDetails } from "../../features/infrastructure/data-api";
 import type { InfraDetail, ServicesInstance, ServiceStatus, UsageMetric, EcsMetrics } from "../../types/infrastructure";
 
 type FileSystemVolume = {
@@ -106,8 +106,36 @@ export function InfrastructureView() {
     machine: null,
   });
 
+  // State for backend data
+  const [infraDetails, setInfraDetails] = useState<InfraDetail[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch infrastructure data from backend
+  useEffect(() => {
+    const loadInfrastructureData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await getInfraDetails();
+        setInfraDetails(data);
+      } catch (err) {
+        console.error('Failed to load infrastructure data:', err);
+        setError('Failed to load infrastructure data. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadInfrastructureData();
+
+    // Set up auto-refresh every 30 seconds
+    const interval = setInterval(loadInfrastructureData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const filteredMachines = useMemo(() => {
-    let machines = InfraDetails;
+    let machines = infraDetails;
     
     // Apply tab filter first
     if (activeTab !== "all") {
@@ -139,20 +167,20 @@ export function InfrastructureView() {
     }
     
     return machines;
-  }, [searchQuery, summaryFilter, activeTab]);
+  }, [searchQuery, summaryFilter, activeTab, infraDetails]);
 
   const resultsLabel = useMemo(() => {
-    return `${filteredMachines.length} of ${InfraDetails.length}`;
-  }, [filteredMachines.length]);
+    return `${filteredMachines.length} of ${infraDetails.length}`;
+  }, [filteredMachines.length, infraDetails.length]);
 
   const tabCounts = useMemo(() => {
     const baseMachines = summaryFilter 
-      ? InfraDetails.filter(machine => 
+      ? infraDetails.filter(machine => 
           machine.region === summaryFilter.region &&
           machine.environment === summaryFilter.environment &&
           machine.infraType === summaryFilter.infraType
         )
-      : InfraDetails;
+      : infraDetails;
 
     return {
       all: baseMachines.length,
@@ -160,7 +188,7 @@ export function InfrastructureView() {
       linux: baseMachines.filter(m => m.infraType === "linux").length,
       windows: baseMachines.filter(m => m.infraType === "windows").length,
     };
-  }, [summaryFilter]);
+  }, [summaryFilter, infraDetails]);
 
   const handleSummaryCardClick = (region: string, environment: string, infraType: string) => {
     setSummaryFilter({ region, environment, infraType });
@@ -410,6 +438,34 @@ export function InfrastructureView() {
 
   return (
     <div className="space-y-6">
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-emerald-500 border-r-transparent"></div>
+            <p className="mt-4 text-slate-400">Loading infrastructure data...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !isLoading && (
+        <div className="rounded-lg border border-rose-500/50 bg-rose-500/10 p-4">
+          <div className="flex items-center gap-3">
+            <svg className="h-6 w-6 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <h3 className="font-semibold text-rose-400">Error Loading Data</h3>
+              <p className="text-sm text-rose-300">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content - Only show when not loading and no error */}
+      {!isLoading && !error && (
+        <>
       {/* Infrastructure Type Tabs - Moved to Top */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-slate-100">Infrastructure Overview</h2>
@@ -495,7 +551,7 @@ export function InfrastructureView() {
 
       {/* Infrastructure Summary Card - Filtered by Active Tab */}
       <InfraSummaryCard 
-        infraDetails={activeTab === "all" ? InfraDetails : InfraDetails.filter(machine => machine.infraType === activeTab)}
+        infraDetails={activeTab === "all" ? infraDetails : infraDetails.filter(machine => machine.infraType === activeTab)}
         onSummaryCardClick={handleSummaryCardClick}
         selectedFilter={summaryFilter}
       />
@@ -821,6 +877,8 @@ export function InfrastructureView() {
         onConfirm={handleHousekeepingConfirm}
         onCancel={handleHousekeepingCancel}
       />
+        </>
+      )}
     </div>
   );
 }
