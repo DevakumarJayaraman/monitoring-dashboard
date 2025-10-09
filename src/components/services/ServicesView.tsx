@@ -125,6 +125,21 @@ export function ServicesView({ selectedProject }: ServicesViewProps): JSX.Elemen
     loadServices();
   }, [loadServices]);
 
+  const environmentFilteredInstances = useMemo(() => {
+    if (environmentFilter === 'ALL') {
+      return servicesInstances;
+    }
+
+    if (environmentFilter === 'PROD_COB') {
+      return servicesInstances.filter((instance) => {
+        const env = (instance.envType ?? '').toUpperCase();
+        return env === 'PROD' || env === 'COB';
+      });
+    }
+
+    return servicesInstances.filter((instance) => (instance.envType ?? '').toUpperCase() === environmentFilter);
+  }, [servicesInstances, environmentFilter]);
+
   const serviceSummaryMap = useMemo(
     () => new Map<string, string>(Object.entries(serviceSummaryByName)),
     []
@@ -133,7 +148,7 @@ export function ServicesView({ selectedProject }: ServicesViewProps): JSX.Elemen
   const serviceVariantsByName = useMemo(() => {
     const map = new Map<string, Map<NonAllProfile, ServiceVariant>>();
 
-    servicesInstances.forEach((instance) => {
+    environmentFilteredInstances.forEach((instance) => {
       if (instance.profile === "all") return;
       const profileKey = instance.profile as NonAllProfile;
       if (!map.has(instance.serviceName)) {
@@ -156,7 +171,7 @@ export function ServicesView({ selectedProject }: ServicesViewProps): JSX.Elemen
     });
 
     return map;
-  }, [serviceSummaryMap, servicesInstances]);
+  }, [serviceSummaryMap, environmentFilteredInstances]);
 
   const servicesByProfile = useMemo(() => {
     const result = new Map<ServiceProfileKey, Map<string, ServiceVariant>>();
@@ -290,6 +305,11 @@ export function ServicesView({ selectedProject }: ServicesViewProps): JSX.Elemen
   useEffect(() => {
     setSelectedServiceKey(null);
   }, [activeProfiles]);
+
+  useEffect(() => {
+    setSelectedServiceKey(null);
+    setSelectedInstances({});
+  }, [environmentFilter]);
 
   const getServiceProfileStats = useCallback(
     (serviceName: string) => serviceStatsByName.get(serviceName) ?? [],
