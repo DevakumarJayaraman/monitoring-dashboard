@@ -62,6 +62,14 @@ public class InfrastructureController {
         return ResponseEntity.ok(infrastructureService.getInfrastructureDetailsByType(type));
     }
 
+    @GetMapping("/details/project/{projectId}")
+    @Operation(summary = "Get infrastructure details by project", 
+               description = "Returns infrastructure list with complete metrics filtered by project ID")
+    public ResponseEntity<List<InfraDetailDTO>> getInfrastructureDetailsByProject(@PathVariable Long projectId) {
+        log.info("GET /api/infrastructure/details/project/{} - Get infrastructure details by project", projectId);
+        return ResponseEntity.ok(infrastructureService.getInfrastructureDetailsByProject(projectId));
+    }
+
     @GetMapping("/name/{name}")
     public ResponseEntity<InfrastructureDTO> getInfrastructureByName(@PathVariable String name) {
         log.info("GET /api/infrastructure/name/{} - Get infrastructure by name", name);
@@ -78,6 +86,20 @@ public class InfrastructureController {
     public ResponseEntity<List<InfrastructureDTO>> getInfrastructureByEnvironment(@PathVariable String environment) {
         log.info("GET /api/infrastructure/environment/{} - Get infrastructure by environment", environment);
         return ResponseEntity.ok(infrastructureService.getInfrastructureByEnvironment(environment));
+    }
+
+    @GetMapping("/metadata/environments")
+    @Operation(summary = "Get distinct environments", description = "Returns a list of distinct environment values")
+    public ResponseEntity<List<String>> getDistinctEnvironments() {
+        log.info("GET /api/infrastructure/metadata/environments - Get distinct environments");
+        return ResponseEntity.ok(infrastructureService.getDistinctEnvironments());
+    }
+
+    @GetMapping("/metadata/regions")
+    @Operation(summary = "Get distinct regions", description = "Returns a list of distinct region values")
+    public ResponseEntity<List<String>> getDistinctRegions() {
+        log.info("GET /api/infrastructure/metadata/regions - Get distinct regions");
+        return ResponseEntity.ok(infrastructureService.getDistinctRegions());
     }
 
     @PostMapping

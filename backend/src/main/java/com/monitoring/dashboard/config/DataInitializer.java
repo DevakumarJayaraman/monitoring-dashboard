@@ -23,8 +23,14 @@ public class DataInitializer implements CommandLineRunner {
     private final ComponentRepository componentRepository;
     private final ComponentDeploymentRepository componentDeploymentRepository;
     private final ServiceInstanceRepository serviceInstanceRepository;
+    private final EnvironmentRepository environmentRepository;
+    private final RegionRepository regionRepository;
+    private final ProjectEnvironmentMappingRepository projectEnvironmentMappingRepository;
+    private final ProjectEnvironmentRepository projectEnvironmentRepository;
 
     private final Random random = new Random(42); // Fixed seed for reproducibility
+
+    private record ProfileSeed(String envCode, String regionCode, String profileCode, String profileDescription) {}
 
     @Override
     public void run(String... args) {
@@ -41,28 +47,50 @@ public class DataInitializer implements CommandLineRunner {
         infraMetricsRepository.deleteAll();
         infrastructureRepository.deleteAll();
         accessRepository.deleteAll();
+        projectEnvironmentRepository.deleteAll();
+        projectEnvironmentMappingRepository.deleteAll();
         projectRepository.deleteAll();
+        environmentRepository.deleteAll();
+        regionRepository.deleteAll();
 
         infrastructureRepository.flush();
         log.info("Cleared all data from DB.");
 
+        // --- Seed master tables ---
+        Map<String, Environment> environmentMap = seedEnvironments();
+        Map<String, Region> regionMap = seedRegions();
+        List<ProfileSeed> profileSeeds = buildProfileSeeds();
+
+        log.info("Created {} environments and {} regions", environmentMap.size(), regionMap.size());
+
         // --- Create Projects ---
-        Project tradeProject = createProject("Trade Management", "Trade operations, settlement, and execution management");
-        Project kycProject = createProject("KYC", "Know Your Customer compliance and verification");
+        Project tradeProject = createProject(
+                "Trade Management",
+                "Trade operations, settlement, and execution management",
+                environmentMap,
+                regionMap,
+                profileSeeds);
+
+        Project kycProject = createProject(
+                "KYC",
+                "Know Your Customer compliance and verification",
+                environmentMap,
+                regionMap,
+                profileSeeds);
 
         log.info("Created projects: {} and {}", tradeProject.getProjectName(), kycProject.getProjectName());
+
+        // --- Create Components for both projects FIRST ---
+        Map<String, Component> tradeComponentsMap = loadComponents(tradeProject, "Trade");
+        Map<String, Component> kycComponentsMap = loadComponents(kycProject, "KYC");
 
         // --- Create Infrastructure for both projects ---
         Map<String, Infrastructure> tradeInfraMap = loadInfrastructure(tradeProject);
         Map<String, Infrastructure> kycInfraMap = loadInfrastructure(kycProject);
 
-        // --- Generate Services ---
-        generateTradeManagementServices(tradeProject, tradeInfraMap);
-        generateKYCServices(kycProject, kycInfraMap);
-
-        // --- Create Components for both projects ---
-        loadComponents(tradeProject, "Trade");
-        loadComponents(kycProject, "KYC");
+        // --- Generate Services with Component mapping ---
+        generateTradeManagementServices(tradeProject, tradeInfraMap, tradeComponentsMap);
+        generateKYCServices(kycProject, kycInfraMap, kycComponentsMap);
 
         // Access control setup
         accessRepository.save(new RoleFunctionAccess("default", "VIEW_ALL", "STAGING", "Y"));
@@ -81,134 +109,171 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Created {} service instances", serviceInstanceRepository.count());
     }
 
-    private Project createProject(String name, String description) {
-        Project project = new Project(name, description);
+    private Map<String, Environment> seedEnvironments() {
+        Map<String, Environment> environments = new HashMap<>();
 
-        // DEV Environment (no region)
-        ProjectEnvironment devEnv = new ProjectEnvironment("DEV", null, "dev", "Development environment");
-        
-        // STAGING Environments (APAC, EMEA, NAM)
-        ProjectEnvironment stagingApacQa = new ProjectEnvironment("STAGING", "APAC", "apacqa", "APAC STAGING QA");
-        ProjectEnvironment stagingApacUat = new ProjectEnvironment("STAGING", "APAC", "apacuat", "APAC STAGING UAT");
-        ProjectEnvironment stagingApacDailyRefresh = new ProjectEnvironment("STAGING", "APAC", "apacdailyrefresh", "APAC STAGING Daily Refresh");
-        
-        ProjectEnvironment stagingEmeaQa = new ProjectEnvironment("STAGING", "EMEA", "emeaqa", "EMEA STAGING QA");
-        ProjectEnvironment stagingEmeaUat = new ProjectEnvironment("STAGING", "EMEA", "emeauat", "EMEA STAGING UAT");
-        ProjectEnvironment stagingEmeaDailyRefresh = new ProjectEnvironment("STAGING", "EMEA", "emeadailyrefresh", "EMEA STAGING Daily Refresh");
-        
-        ProjectEnvironment stagingNamQa = new ProjectEnvironment("STAGING", "NAM", "namqa", "NAM STAGING QA");
-        ProjectEnvironment stagingNamUat = new ProjectEnvironment("STAGING", "NAM", "namuat", "NAM STAGING UAT");
-        ProjectEnvironment stagingNamDailyRefresh = new ProjectEnvironment("STAGING", "NAM", "namdailyrefresh", "NAM STAGING Daily Refresh");
-        
-        // PROD Environments (APAC, EMEA, NAM)
-        ProjectEnvironment prodApacProd = new ProjectEnvironment("PROD", "APAC", "apacprod", "APAC Production");
-        ProjectEnvironment prodEmeaProd = new ProjectEnvironment("PROD", "EMEA", "emeaprod", "EMEA Production");
-        ProjectEnvironment prodNamProd = new ProjectEnvironment("PROD", "NAM", "namprod", "NAM Production");
-        
-        // COB (Disaster Recovery) Environments (APAC, EMEA, NAM)
-        ProjectEnvironment cobApac = new ProjectEnvironment("COB", "APAC", "apaccob", "APAC Disaster Recovery");
-        ProjectEnvironment cobEmea = new ProjectEnvironment("COB", "EMEA", "emeacob", "EMEA Disaster Recovery");
-        ProjectEnvironment cobNam = new ProjectEnvironment("COB", "NAM", "namcob", "NAM Disaster Recovery");
-        
-        // Add all environments to project
-        project.addEnvironment(devEnv);
-        project.addEnvironment(stagingApacQa);
-        project.addEnvironment(stagingApacUat);
-        project.addEnvironment(stagingApacDailyRefresh);
-        project.addEnvironment(stagingEmeaQa);
-        project.addEnvironment(stagingEmeaUat);
-        project.addEnvironment(stagingEmeaDailyRefresh);
-        project.addEnvironment(stagingNamQa);
-        project.addEnvironment(stagingNamUat);
-        project.addEnvironment(stagingNamDailyRefresh);
-        project.addEnvironment(prodApacProd);
-        project.addEnvironment(prodEmeaProd);
-        project.addEnvironment(prodNamProd);
-        project.addEnvironment(cobApac);
-        project.addEnvironment(cobEmea);
-        project.addEnvironment(cobNam);
-        
+        environments.put("DEV", environmentRepository.save(new Environment("DEV", "Development environment")));
+        environments.put("STAGING", environmentRepository.save(new Environment("STAGING", "Staging/UAT environment")));
+        environments.put("PROD", environmentRepository.save(new Environment("PROD", "Production environment")));
+        environments.put("COB", environmentRepository.save(new Environment("COB", "Continuity of Business")));
+
+        return environments;
+    }
+
+    private Map<String, Region> seedRegions() {
+        Map<String, Region> regions = new HashMap<>();
+
+        regions.put("GLOBAL", regionRepository.save(new Region("GLOBAL", "Global/Non-region specific")));
+        regions.put("APAC", regionRepository.save(new Region("APAC", "Asia Pacific")));
+        regions.put("EMEA", regionRepository.save(new Region("EMEA", "Europe, Middle East & Africa")));
+        regions.put("NAM", regionRepository.save(new Region("NAM", "North America")));
+
+        return regions;
+    }
+
+    private List<ProfileSeed> buildProfileSeeds() {
+        List<ProfileSeed> seeds = new ArrayList<>();
+
+        // DEV (Global)
+        seeds.add(new ProfileSeed("DEV", "GLOBAL", "dev", "Development environment"));
+
+        // STAGING profiles
+        seeds.add(new ProfileSeed("STAGING", "APAC", "apacqa", "APAC STAGING QA"));
+        seeds.add(new ProfileSeed("STAGING", "APAC", "apacuat", "APAC STAGING UAT"));
+        seeds.add(new ProfileSeed("STAGING", "APAC", "apacdailyrefresh", "APAC STAGING Daily Refresh"));
+
+        seeds.add(new ProfileSeed("STAGING", "EMEA", "emeaqa", "EMEA STAGING QA"));
+        seeds.add(new ProfileSeed("STAGING", "EMEA", "emeauat", "EMEA STAGING UAT"));
+        seeds.add(new ProfileSeed("STAGING", "EMEA", "emeadailyrefresh", "EMEA STAGING Daily Refresh"));
+
+        seeds.add(new ProfileSeed("STAGING", "NAM", "namqa", "NAM STAGING QA"));
+        seeds.add(new ProfileSeed("STAGING", "NAM", "namuat", "NAM STAGING UAT"));
+        seeds.add(new ProfileSeed("STAGING", "NAM", "namdailyrefresh", "NAM STAGING Daily Refresh"));
+
+        // PROD profiles
+        seeds.add(new ProfileSeed("PROD", "APAC", "apacprod", "APAC Production"));
+        seeds.add(new ProfileSeed("PROD", "EMEA", "emeaprod", "EMEA Production"));
+        seeds.add(new ProfileSeed("PROD", "NAM", "namprod", "NAM Production"));
+
+        // COB profiles
+        seeds.add(new ProfileSeed("COB", "APAC", "apaccob", "APAC Disaster Recovery"));
+        seeds.add(new ProfileSeed("COB", "EMEA", "emeacob", "EMEA Disaster Recovery"));
+        seeds.add(new ProfileSeed("COB", "NAM", "namcob", "NAM Disaster Recovery"));
+
+        return seeds;
+    }
+
+    private Project createProject(String name,
+                                  String description,
+                                  Map<String, Environment> environmentMap,
+                                  Map<String, Region> regionMap,
+                                  List<ProfileSeed> profileSeeds) {
+        Project project = new Project(name, description);
         project = projectRepository.save(project);
-        log.info("Created project: {} with {} environments", project.getProjectName(), project.getEnvironments().size());
+
+        Map<String, ProjectEnvironmentMapping> mappingCache = new HashMap<>();
+
+        for (ProfileSeed seed : profileSeeds) {
+            Environment environment = environmentMap.get(seed.envCode());
+            Region region = regionMap.get(seed.regionCode());
+
+            if (environment == null) {
+                throw new IllegalStateException("Missing environment for code " + seed.envCode());
+            }
+            if (region == null) {
+                throw new IllegalStateException("Missing region for code " + seed.regionCode());
+            }
+
+            String key = seed.envCode() + "::" + seed.regionCode();
+            ProjectEnvironmentMapping mapping = mappingCache.get(key);
+            if (mapping == null) {
+                mapping = new ProjectEnvironmentMapping();
+                mapping.setEnvironment(environment);
+                mapping.setRegion(region);
+                project.addEnvironmentMapping(mapping);
+                mapping = projectEnvironmentMappingRepository.save(mapping);
+                mappingCache.put(key, mapping);
+            }
+
+            ProjectProfiles profile = new ProjectProfiles();
+            profile.setProjectEnvironmentMapping(mapping);
+            profile.setProfileCode(seed.profileCode());
+            profile.setProfileDesc(seed.profileDescription());
+            profile.setStatus("ACTIVE");
+            projectEnvironmentRepository.save(profile);
+        }
+
+        log.info("Created project: {} with {} environment mappings and {} profiles",
+                project.getProjectName(),
+                project.getEnvironmentMappings().size(),
+                projectEnvironmentRepository.findByProjectEnvironmentMappingProjectProjectId(project.getProjectId()).size());
 
         return project;
     }
 
     private Map<String, Infrastructure> loadInfrastructure(Project project) {
         Map<String, Infrastructure> infraMap = new HashMap<>();
-        
-        // Get project code (first 2 letters)
-        String projectCode = project.getProjectName().substring(0, 2).toUpperCase(); // "TR" for Trade, "KY" for KYC
-        
-        // Create infrastructure for each environment
-        List<ProjectEnvironment> environments = new ArrayList<>(project.getEnvironments());
+        String projectPrefix = project.getProjectName().toLowerCase().replace(" ", "-");
 
-        for (ProjectEnvironment env : environments) {
-            String envCode = env.getEnvCode();
+        // Create infrastructure for each environment
+        // Create 10-12 machines per environment to ensure good distribution
+        List<ProjectProfiles> environments = projectEnvironmentRepository
+                .findByProjectEnvironmentMappingProjectProjectId(project.getProjectId());
+
+        for (ProjectProfiles env : environments) {
+            String profile = env.getEnvCode();
             String region = env.getRegionCode() != null ? env.getRegionCode() : "";
             String profileKey = env.getProfileCode();
-            
-            // Determine suffix based on environment type
-            String suffix = "";
-            switch (envCode) {
-                case "DEV":
-                    suffix = "D";
-                    break;
-                case "STAGING":
-                    suffix = "U";
-                    break;
-                case "PROD":
-                    suffix = "P";
-                    break;
-                case "COB":
-                    suffix = "C";
-                    break;
-            }
-            
-            // Create 10 of each infrastructure type per environment/region
-            String[] infraTypes = {"linux", "windows", "ecs"};
-            
-            for (String infraType : infraTypes) {
-                for (int i = 1; i <= 10; i++) {
-                    String machineNumber = String.format("%02d", i);
-                    
-                    // Naming convention: {ProjectCode}{Region}{Type}{Number}{Suffix}
-                    // Examples: TRAPLIN01U, KYNAMWIN05P, KYAPECS03C
-                    String regionCode = region.isEmpty() ? "" : region.substring(0, 2); // AP, EM, NA
-                    String typeCode = infraType.equals("linux") ? "LIN" : 
-                                     infraType.equals("windows") ? "WIN" : "ECS";
-                    
-                    String infraName = projectCode + regionCode + typeCode + machineNumber + suffix;
-                    String hostname = infraName.toLowerCase() + ".example.com";
-                    String ipAddress = infraType.equals("ecs") ? null : generateIpAddress();
-                    String datacenter = generateDatacenter(region);
-                    
-                    // Vary resources based on environment and type
-                    Double cpuLimit = infraType.equals("ecs") ? 
-                                    (envCode.equals("PROD") || envCode.equals("COB") ? 16.0 : 8.0) :
-                                    (envCode.equals("PROD") || envCode.equals("COB") ? 8.0 : 4.0);
-                    Double memLimit = infraType.equals("ecs") ?
-                                    (envCode.equals("PROD") || envCode.equals("COB") ? 64.0 : 32.0) :
-                                    (envCode.equals("PROD") || envCode.equals("COB") ? 32.0 : 16.0);
-                    
-                    // Random usage between 20-80% of limit
-                    Double cpuUsage = cpuLimit * (0.2 + random.nextDouble() * 0.6);
-                    Double memUsage = memLimit * (0.2 + random.nextDouble() * 0.6);
-                    
-                    // Random status
-                    String[] statuses = {"healthy", "healthy", "healthy", "watch", "scaling"};
-                    String status = statuses[random.nextInt(statuses.length)];
-                    
-                    Infrastructure infra = createInfraWithMetrics(
-                        project, env, infraName, infraType, hostname, ipAddress,
-                        profileKey, region, datacenter, status, cpuLimit,
-                        memLimit, cpuUsage, memUsage
-                    );
+            ProjectEnvironmentMapping mapping = env.getProjectEnvironmentMapping();
 
-                    // Store in map with a unique key
-                    String mapKey = profileKey + "_" + infraType + "_" + i;
-                    infraMap.put(mapKey, infra);
+            // Determine number of machines and infra types
+            int machineCount = 10 + random.nextInt(3); // 10-12 machines per environment
+
+            for (int i = 1; i <= machineCount; i++) {
+                // Determine infra type based on environment and machine number
+                String infraType;
+                if (profile.equals("PROD") || profile.equals("COB")) {
+                    // PROD/COB: Mix of linux, windows, and ecs
+                    int typeSelector = i % 3;
+                    if (typeSelector == 0) {
+                        infraType = "ecs";
+                    } else if (typeSelector == 1) {
+                        infraType = "windows";
+                    } else {
+                        infraType = "linux";
+                    }
+                } else if (profile.equals("STAGING")) {
+                    // STAGING: Mostly linux/windows with some ecs
+                    int typeSelector = i % 4;
+                    if (typeSelector == 0) {
+                        infraType = "ecs";
+                    } else if (typeSelector == 1) {
+                        infraType = "windows";
+                    } else {
+                        infraType = "linux";
+                    }
+                } else {
+                    // DEV: Mix of linux and windows, no ecs
+                    infraType = (i % 2 == 0) ? "windows" : "linux";
                 }
+
+                String infraName = projectPrefix + "-" + profileKey + "-vm-" + String.format("%02d", i);
+                String hostname = infraName + ".example.com";
+                String ipAddress = infraType.equals("ecs") ? null : generateIpAddress();
+                String datacenter = generateDatacenter(region);
+
+                Infrastructure infra = createInfraWithMetrics(
+                    project, mapping, infraName, infraType, hostname, ipAddress,
+                    profile, region, datacenter, "healthy",
+                    infraType.equals("ecs") ? 8.0 : 4.0,
+                    infraType.equals("ecs") ? 32.0 : 16.0,
+                    random.nextDouble() * 4.0 + 1.0,
+                    random.nextDouble() * 12.0 + 4.0
+                );
+
+                // Store with unique key including machine number
+                String infraKey = profileKey + "_" + String.format("%02d", i);
+                infraMap.put(infraKey, infra);
             }
         }
 
@@ -216,7 +281,7 @@ public class DataInitializer implements CommandLineRunner {
         return infraMap;
     }
 
-    private Infrastructure createInfraWithMetrics(Project project, ProjectEnvironment env, String infraName, String type, 
+    private Infrastructure createInfraWithMetrics(Project project, ProjectEnvironmentMapping mapping, String infraName, String type,
                                                   String hostname, String ipAddress, String environment, String region,
                                                   String datacenter, String status, Double cpuLimit,
                                                   Double memLimit, Double cpuUsage, Double memUsage) {
@@ -229,8 +294,7 @@ public class DataInitializer implements CommandLineRunner {
         infra.setRegion(region);
         infra.setDatacenter(datacenter);
         infra.setStatus(status);
-        infra.setProject(project);
-        infra.setProjectEnvironment(env);
+        infra.setProjectEnvironmentMapping(mapping);
         infra = infrastructureRepository.save(infra);
 
         LocalDate today = LocalDate.now();
@@ -294,7 +358,7 @@ public class DataInitializer implements CommandLineRunner {
         infraMetricsRepository.save(metric);
     }
 
-    private void generateTradeManagementServices(Project project, Map<String, Infrastructure> infraMap) {
+    private void generateTradeManagementServices(Project project, Map<String, Infrastructure> infraMap, Map<String, Component> componentsMap) {
         List<String> serviceNames = Arrays.asList(
             // Core Trading Services (15)
             "trade-execution-service", "order-management-service", "trade-matching-engine",
@@ -326,10 +390,10 @@ public class DataInitializer implements CommandLineRunner {
             "analytics-dashboard-service"
         );
 
-        generateServicesForProject(project, infraMap, serviceNames);
+        generateServicesForProject(project, infraMap, serviceNames, componentsMap);
     }
 
-    private void generateKYCServices(Project project, Map<String, Infrastructure> infraMap) {
+    private void generateKYCServices(Project project, Map<String, Infrastructure> infraMap, Map<String, Component> componentsMap) {
         List<String> serviceNames = Arrays.asList(
             // Customer Onboarding (12)
             "customer-onboarding-service", "identity-verification-service", "document-verification-service",
@@ -361,18 +425,19 @@ public class DataInitializer implements CommandLineRunner {
             "analytics-service"
         );
 
-        generateServicesForProject(project, infraMap, serviceNames);
+        generateServicesForProject(project, infraMap, serviceNames, componentsMap);
     }
 
-    private void generateServicesForProject(Project project, Map<String, Infrastructure> infraMap, List<String> serviceNames) {
-        List<ProjectEnvironment> allEnvironments = new ArrayList<>(project.getEnvironments());
+    private void generateServicesForProject(Project project, Map<String, Infrastructure> infraMap, List<String> serviceNames, Map<String, Component> componentsMap) {
+        List<ProjectProfiles> allEnvironments = projectEnvironmentRepository
+                .findByProjectEnvironmentMappingProjectProjectId(project.getProjectId());
         int serviceCount = 0;
 
         for (String serviceName : serviceNames) {
             // 85% of services run on all profiles, 15% on specific regions only
             boolean runOnAllProfiles = random.nextDouble() < 0.85;
 
-            List<ProjectEnvironment> targetEnvironments;
+            List<ProjectProfiles> targetEnvironments;
             if (runOnAllProfiles) {
                 targetEnvironments = allEnvironments;
             } else {
@@ -381,37 +446,39 @@ public class DataInitializer implements CommandLineRunner {
                 String selectedRegion = regions.get(random.nextInt(regions.size()));
 
                 targetEnvironments = allEnvironments.stream()
-                    .filter(env -> env.getRegionCode() == null || env.getRegionCode().equals(selectedRegion))
+                    .filter(env -> {
+                        String region = env.getRegionCode();
+                        return region == null || "GLOBAL".equals(region) || region.equals(selectedRegion);
+                    })
                     .collect(Collectors.toList());
             }
 
             // Create service instances for each target environment
-            for (ProjectEnvironment env : targetEnvironments) {
-                // Pick a random infrastructure from this environment
+            for (ProjectProfiles env : targetEnvironments) {
+                // Get all infrastructure machines for this environment
                 String profileKey = env.getProfileCode();
-                
-                // Find all infrastructure for this profile
-                List<String> infraKeys = infraMap.keySet().stream()
-                    .filter(key -> key.startsWith(profileKey + "_"))
+                List<Infrastructure> envInfrastructures = infraMap.values().stream()
+                    .filter(infra -> infra.getInfraName().contains(profileKey))
                     .collect(Collectors.toList());
-                
-                if (infraKeys.isEmpty()) continue;
-                
-                // Randomly select one infrastructure
-                String selectedKey = infraKeys.get(random.nextInt(infraKeys.size()));
-                Infrastructure infra = infraMap.get(selectedKey);
-                
-                if (infra == null) continue;
 
-                String instanceId = "srv-" + UUID.randomUUID().toString().substring(0, 8);
+                if (envInfrastructures.isEmpty()) continue;
+
+                // Randomly select one of the machines in this environment
+                Infrastructure infra = envInfrastructures.get(random.nextInt(envInfrastructures.size()));
+
+                // Create service instance with profile-specific naming
+                String instanceId = "srv-" + profileKey + "-" + UUID.randomUUID().toString().substring(0, 8);
                 int port = 8080 + random.nextInt(100);
                 String version = random.nextInt(5) + "." + random.nextInt(10) + "." + random.nextInt(10);
                 int uptimeSeconds = random.nextInt(86400) + 3600; // 1 hour to 1 day
                 String status = random.nextDouble() < 0.95 ? "running" : "degraded";
 
+                // Map service name to component - try multiple strategies
+                Component component = findComponentForService(serviceName, componentsMap);
+
                 createServiceInstance(
                     instanceId, serviceName, infra.getInfraName(), infra.getInfraType(),
-                    env.getProfileCode(), port, version, uptimeSeconds, status
+                    profileKey, port, version, uptimeSeconds, status, component
                 );
                 serviceCount++;
             }
@@ -420,9 +487,386 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Created {} service instances for project {}", serviceCount, project.getProjectName());
     }
 
+    /**
+     * Smart component mapping that tries multiple strategies to find the right component
+     */
+    private Component findComponentForService(String serviceName, Map<String, Component> componentsMap) {
+        // Strategy 1: Direct match after removing "-service" suffix and converting to underscores
+        String cleanName = serviceName.replace("-service", "").replace("-", "-");
+        Component component = componentsMap.get(cleanName);
+        if (component != null) return component;
+
+        // Strategy 2: Try with underscores instead of hyphens
+        String underscoreName = serviceName.replace("-service", "").replace("-", "_");
+        component = componentsMap.get(underscoreName);
+        if (component != null) return component;
+
+        // Strategy 3: Try exact match
+        component = componentsMap.get(serviceName);
+        if (component != null) return component;
+
+        // Strategy 4: Try mapping based on keywords
+        // e.g., "trade-execution-service" -> "trade-execution-engine"
+        if (serviceName.contains("execution")) {
+            component = componentsMap.get("trade-execution-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("order-management")) {
+            component = componentsMap.get("order-management-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("position")) {
+            component = componentsMap.get("position-keeper");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("validation")) {
+            component = componentsMap.get("trade-validation-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("market-data")) {
+            component = componentsMap.get("market-data-aggregator");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("price-discovery")) {
+            component = componentsMap.get("price-discovery-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("routing")) {
+            component = componentsMap.get("order-router");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("booking")) {
+            component = componentsMap.get("trade-booking-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("enrichment")) {
+            component = componentsMap.get("trade-enrichment-service");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("pre-trade-compliance")) {
+            component = componentsMap.get("pre-trade-compliance");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("post-trade")) {
+            component = componentsMap.get("post-trade-processor");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("allocation")) {
+            component = componentsMap.get("trade-allocation-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("settlement") && !serviceName.contains("instruction")) {
+            component = componentsMap.get("settlement-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("clearing")) {
+            component = componentsMap.get("clearing-gateway");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("cash-management")) {
+            component = componentsMap.get("cash-management-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("collateral")) {
+            component = componentsMap.get("collateral-optimizer");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("margin")) {
+            component = componentsMap.get("margin-calculator");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("reconciliation")) {
+            component = componentsMap.get("reconciliation-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("payment")) {
+            component = componentsMap.get("payment-gateway");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("corporate-actions")) {
+            component = componentsMap.get("corporate-actions-processor");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("dividend")) {
+            component = componentsMap.get("dividend-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("settlement-instruction")) {
+            component = componentsMap.get("settlement-instruction-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("risk-analytics")) {
+            component = componentsMap.get("risk-analytics-platform");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("credit-risk")) {
+            component = componentsMap.get("credit-risk-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("market-risk")) {
+            component = componentsMap.get("market-risk-calculator");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("operational-risk")) {
+            component = componentsMap.get("operational-risk-monitor");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("surveillance")) {
+            component = componentsMap.get("trade-surveillance-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("fraud")) {
+            component = componentsMap.get("fraud-detection-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("risk-limit")) {
+            component = componentsMap.get("risk-limit-monitor");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("regulatory-reporting")) {
+            component = componentsMap.get("regulatory-reporting-hub");
+            if (component != null) return component;
+            component = componentsMap.get("regulatory-reporting-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("instrument-master")) {
+            component = componentsMap.get("instrument-master-data");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("counterparty-master")) {
+            component = componentsMap.get("counterparty-master-data");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("security-master")) {
+            component = componentsMap.get("security-master-data");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("static-data")) {
+            component = componentsMap.get("static-data-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("hierarchy")) {
+            component = componentsMap.get("hierarchy-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("data-quality")) {
+            component = componentsMap.get("data-quality-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("reference-data")) {
+            component = componentsMap.get("reference-data-hub");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("api-gateway")) {
+            component = componentsMap.get("api-gateway");
+            if (component != null) return component;
+            component = componentsMap.get("api-gateway-kyc");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("event-streaming")) {
+            component = componentsMap.get("event-streaming-platform");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("file-transfer")) {
+            component = componentsMap.get("file-transfer-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("notification")) {
+            component = componentsMap.get("notification-service");
+            if (component != null) return component;
+            component = componentsMap.get("notification-hub");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("audit")) {
+            component = componentsMap.get("audit-trail-system");
+            if (component != null) return component;
+            component = componentsMap.get("audit-log-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("reporting")) {
+            component = componentsMap.get("reporting-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("analytics")) {
+            component = componentsMap.get("analytics-dashboard");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("workflow")) {
+            component = componentsMap.get("workflow-engine");
+            if (component != null) return component;
+            component = componentsMap.get("workflow-orchestrator");
+            if (component != null) return component;
+        }
+
+        // KYC-specific mappings
+        if (serviceName.contains("customer-onboarding")) {
+            component = componentsMap.get("customer-onboarding-portal");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("identity-verification")) {
+            component = componentsMap.get("identity-verification-service");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-verification")) {
+            component = componentsMap.get("document-verification-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("biometric")) {
+            component = componentsMap.get("biometric-authentication");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("digital-signature") || serviceName.contains("e-signature")) {
+            component = componentsMap.get("digital-signature-platform");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("customer-screening")) {
+            component = componentsMap.get("customer-screening-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("due-diligence")) {
+            component = componentsMap.get("due-diligence-workflow");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("risk-rating")) {
+            component = componentsMap.get("risk-rating-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("customer-profile")) {
+            component = componentsMap.get("customer-profile-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("consent")) {
+            component = componentsMap.get("consent-management-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-upload")) {
+            component = componentsMap.get("document-upload-portal");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-processing")) {
+            component = componentsMap.get("document-processing-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-extraction")) {
+            component = componentsMap.get("document-extraction-service");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-storage")) {
+            component = componentsMap.get("document-storage-vault");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-retention")) {
+            component = componentsMap.get("document-retention-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-archival")) {
+            component = componentsMap.get("document-archival-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-retrieval")) {
+            component = componentsMap.get("document-retrieval-service");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("document-classification")) {
+            component = componentsMap.get("document-classifier");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("address-verification")) {
+            component = componentsMap.get("address-verification-service");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("employment-verification")) {
+            component = componentsMap.get("employment-verification-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("income-verification")) {
+            component = componentsMap.get("income-verification-platform");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("bank-account-verification")) {
+            component = componentsMap.get("bank-account-verification");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("credit-check")) {
+            component = componentsMap.get("credit-check-service");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("background-check")) {
+            component = componentsMap.get("background-check-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("sanctions")) {
+            component = componentsMap.get("sanctions-screening-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("pep-screening")) {
+            component = componentsMap.get("pep-screening-service");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("adverse-media")) {
+            component = componentsMap.get("adverse-media-monitor");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("aml")) {
+            component = componentsMap.get("aml-monitoring-platform");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("kyc-refresh")) {
+            component = componentsMap.get("kyc-refresh-scheduler");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("transaction-monitoring")) {
+            component = componentsMap.get("transaction-monitoring-engine");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("case-management")) {
+            component = componentsMap.get("case-management-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("alert-management")) {
+            component = componentsMap.get("alert-management-platform");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("investigation")) {
+            component = componentsMap.get("investigation-workflow");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("suspicious-activity")) {
+            component = componentsMap.get("sar-filing-system");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("compliance-dashboard")) {
+            component = componentsMap.get("compliance-dashboard");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("periodic-review")) {
+            component = componentsMap.get("periodic-review-manager");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("third-party-verification")) {
+            component = componentsMap.get("third-party-verification-hub");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("credit-bureau")) {
+            component = componentsMap.get("credit-bureau-gateway");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("government-id")) {
+            component = componentsMap.get("government-id-verification");
+            if (component != null) return component;
+        }
+        if (serviceName.contains("rule-engine")) {
+            component = componentsMap.get("rule-engine");
+            if (component != null) return component;
+        }
+
+        // Return null if no match found (15% of services are standalone without components)
+        return null;
+    }
+
     private void createServiceInstance(String instanceId, String serviceName, String machineName,
                                        String infraType, String profile, Integer port,
-                                       String version, Integer uptimeSeconds, String status) {
+                                       String version, Integer uptimeSeconds, String status, Component component) {
         ServiceInstance instance = new ServiceInstance();
         instance.setInstanceId(instanceId);
         instance.setServiceName(serviceName);
@@ -435,23 +879,127 @@ public class DataInitializer implements CommandLineRunner {
         instance.setStatus(status);
         instance.setLogUrl("https://logs.example.com/" + instanceId);
         instance.setMetricsUrl("https://metrics.example.com/" + instanceId);
+        instance.setComponent(component);
         serviceInstanceRepository.save(instance);
     }
 
-    private void loadComponents(Project project, String projectType) {
+    private Map<String, Component> loadComponents(Project project, String projectType) {
+        Map<String, Component> componentsMap = new HashMap<>();
+
         if (projectType.equals("Trade")) {
-            createComponent(project, "trade-execution-component", "Handles trade execution, matching, and order management across all trading venues.", "Core Trading");
-            createComponent(project, "settlement-component", "Manages settlement, clearing, and cash management workflows.", "Settlement & Clearing");
-            createComponent(project, "risk-management-component", "Provides risk analytics, monitoring, and compliance capabilities.", "Risk & Compliance");
-            createComponent(project, "reference-data-component", "Manages master data for instruments, counterparties, and entities.", "Reference Data");
-            createComponent(project, "reporting-component", "Generates and serves regulatory and business reports.", "Support & Integration");
+            // Core Trading Components (12)
+            componentsMap.put("trade-execution-engine", createComponent(project, "trade-execution-engine", "Real-time trade execution and order matching system", "Core Trading"));
+            componentsMap.put("order-management-system", createComponent(project, "order-management-system", "Centralized order management and lifecycle tracking", "Core Trading"));
+            componentsMap.put("position-keeper", createComponent(project, "position-keeper", "Real-time position management and P&L calculation", "Core Trading"));
+            componentsMap.put("trade-validation-engine", createComponent(project, "trade-validation-engine", "Pre-trade and post-trade validation", "Core Trading"));
+            componentsMap.put("market-data-aggregator", createComponent(project, "market-data-aggregator", "Multi-source market data aggregation and normalization", "Core Trading"));
+            componentsMap.put("price-discovery-engine", createComponent(project, "price-discovery-engine", "Real-time price discovery and quote management", "Core Trading"));
+            componentsMap.put("order-router", createComponent(project, "order-router", "Smart order routing across multiple venues", "Core Trading"));
+            componentsMap.put("trade-booking-system", createComponent(project, "trade-booking-system", "Trade booking and confirmation management", "Core Trading"));
+            componentsMap.put("trade-enrichment-service", createComponent(project, "trade-enrichment-service", "Trade data enrichment and augmentation", "Core Trading"));
+            componentsMap.put("pre-trade-compliance", createComponent(project, "pre-trade-compliance", "Pre-trade compliance and risk checks", "Core Trading"));
+            componentsMap.put("post-trade-processor", createComponent(project, "post-trade-processor", "Post-trade processing and workflow", "Core Trading"));
+            componentsMap.put("trade-allocation-engine", createComponent(project, "trade-allocation-engine", "Trade allocation and block processing", "Core Trading"));
+
+            // Settlement & Clearing Components (10)
+            componentsMap.put("settlement-engine", createComponent(project, "settlement-engine", "Multi-currency settlement processing", "Settlement & Clearing"));
+            componentsMap.put("clearing-gateway", createComponent(project, "clearing-gateway", "Central clearing house integration", "Settlement & Clearing"));
+            componentsMap.put("cash-management-system", createComponent(project, "cash-management-system", "Cash and liquidity management", "Settlement & Clearing"));
+            componentsMap.put("collateral-optimizer", createComponent(project, "collateral-optimizer", "Collateral optimization and management", "Settlement & Clearing"));
+            componentsMap.put("margin-calculator", createComponent(project, "margin-calculator", "Real-time margin calculation engine", "Settlement & Clearing"));
+            componentsMap.put("reconciliation-engine", createComponent(project, "reconciliation-engine", "Multi-party reconciliation system", "Settlement & Clearing"));
+            componentsMap.put("payment-gateway", createComponent(project, "payment-gateway", "Payment processing and settlement", "Settlement & Clearing"));
+            componentsMap.put("corporate-actions-processor", createComponent(project, "corporate-actions-processor", "Corporate actions processing", "Settlement & Clearing"));
+            componentsMap.put("dividend-manager", createComponent(project, "dividend-manager", "Dividend processing and distribution", "Settlement & Clearing"));
+            componentsMap.put("settlement-instruction-manager", createComponent(project, "settlement-instruction-manager", "Settlement instruction generation and management", "Settlement & Clearing"));
+
+            // Risk Management Components (8)
+            componentsMap.put("risk-analytics-platform", createComponent(project, "risk-analytics-platform", "Real-time risk analytics and monitoring", "Risk & Compliance"));
+            componentsMap.put("credit-risk-engine", createComponent(project, "credit-risk-engine", "Credit risk assessment and monitoring", "Risk & Compliance"));
+            componentsMap.put("market-risk-calculator", createComponent(project, "market-risk-calculator", "Market risk calculation (VaR, Greeks)", "Risk & Compliance"));
+            componentsMap.put("operational-risk-monitor", createComponent(project, "operational-risk-monitor", "Operational risk monitoring", "Risk & Compliance"));
+            componentsMap.put("trade-surveillance-system", createComponent(project, "trade-surveillance-system", "Real-time trade surveillance", "Risk & Compliance"));
+            componentsMap.put("fraud-detection-engine", createComponent(project, "fraud-detection-engine", "ML-based fraud detection", "Risk & Compliance"));
+            componentsMap.put("risk-limit-monitor", createComponent(project, "risk-limit-monitor", "Risk limit monitoring and alerts", "Risk & Compliance"));
+            componentsMap.put("regulatory-reporting-hub", createComponent(project, "regulatory-reporting-hub", "Multi-jurisdiction regulatory reporting", "Risk & Compliance"));
+
+            // Reference Data Components (7)
+            componentsMap.put("instrument-master-data", createComponent(project, "instrument-master-data", "Central instrument reference data", "Reference Data"));
+            componentsMap.put("counterparty-master-data", createComponent(project, "counterparty-master-data", "Counterparty and entity master data", "Reference Data"));
+            componentsMap.put("security-master-data", createComponent(project, "security-master-data", "Security reference data management", "Reference Data"));
+            componentsMap.put("static-data-manager", createComponent(project, "static-data-manager", "Static data management and distribution", "Reference Data"));
+            componentsMap.put("hierarchy-manager", createComponent(project, "hierarchy-manager", "Entity and product hierarchy management", "Reference Data"));
+            componentsMap.put("data-quality-engine", createComponent(project, "data-quality-engine", "Data quality and validation", "Reference Data"));
+            componentsMap.put("reference-data-hub", createComponent(project, "reference-data-hub", "Central reference data distribution", "Reference Data"));
+
+            // Integration & Support Components (8)
+            componentsMap.put("api-gateway", createComponent(project, "api-gateway", "External API gateway and security", "Integration & Support"));
+            componentsMap.put("event-streaming-platform", createComponent(project, "event-streaming-platform", "Real-time event streaming", "Integration & Support"));
+            componentsMap.put("file-transfer-manager", createComponent(project, "file-transfer-manager", "Secure file transfer and processing", "Integration & Support"));
+            componentsMap.put("notification-service", createComponent(project, "notification-service", "Multi-channel notification service", "Integration & Support"));
+            componentsMap.put("audit-trail-system", createComponent(project, "audit-trail-system", "Comprehensive audit trail", "Integration & Support"));
+            componentsMap.put("reporting-engine", createComponent(project, "reporting-engine", "Business and regulatory reporting", "Integration & Support"));
+            componentsMap.put("analytics-dashboard", createComponent(project, "analytics-dashboard", "Real-time analytics and dashboards", "Integration & Support"));
+            componentsMap.put("workflow-engine", createComponent(project, "workflow-engine", "Business workflow orchestration", "Integration & Support"));
+
         } else {
-            createComponent(project, "onboarding-component", "Handles customer onboarding, verification, and due diligence workflows.", "Customer Onboarding");
-            createComponent(project, "document-management-component", "Manages document upload, processing, extraction, and storage.", "Document Management");
-            createComponent(project, "verification-component", "Provides identity, address, and background verification services.", "Verification & Validation");
-            createComponent(project, "compliance-component", "Manages AML, KYC refresh, case management, and regulatory reporting.", "Compliance & Regulatory");
-            createComponent(project, "integration-component", "Handles third-party integrations and API gateway services.", "Integration & Support");
+            // Customer Onboarding Components (10)
+            componentsMap.put("customer-onboarding-portal", createComponent(project, "customer-onboarding-portal", "Digital customer onboarding platform", "Customer Onboarding"));
+            componentsMap.put("identity-verification-service", createComponent(project, "identity-verification-service", "Identity verification and validation", "Customer Onboarding"));
+            componentsMap.put("document-verification-engine", createComponent(project, "document-verification-engine", "Document verification and OCR", "Customer Onboarding"));
+            componentsMap.put("biometric-authentication", createComponent(project, "biometric-authentication", "Biometric verification system", "Customer Onboarding"));
+            componentsMap.put("digital-signature-platform", createComponent(project, "digital-signature-platform", "Digital signature and e-signature", "Customer Onboarding"));
+            componentsMap.put("customer-screening-engine", createComponent(project, "customer-screening-engine", "Real-time customer screening", "Customer Onboarding"));
+            componentsMap.put("due-diligence-workflow", createComponent(project, "due-diligence-workflow", "Customer due diligence workflow", "Customer Onboarding"));
+            componentsMap.put("risk-rating-engine", createComponent(project, "risk-rating-engine", "Customer risk rating and scoring", "Customer Onboarding"));
+            componentsMap.put("customer-profile-manager", createComponent(project, "customer-profile-manager", "Customer profile management", "Customer Onboarding"));
+            componentsMap.put("consent-management-system", createComponent(project, "consent-management-system", "Customer consent and preferences", "Customer Onboarding"));
+
+            // Document Management Components (8)
+            componentsMap.put("document-upload-portal", createComponent(project, "document-upload-portal", "Secure document upload interface", "Document Management"));
+            componentsMap.put("document-processing-engine", createComponent(project, "document-processing-engine", "Document processing and classification", "Document Management"));
+            componentsMap.put("document-extraction-service", createComponent(project, "document-extraction-service", "Data extraction from documents", "Document Management"));
+            componentsMap.put("document-storage-vault", createComponent(project, "document-storage-vault", "Secure document storage", "Document Management"));
+            componentsMap.put("document-retention-manager", createComponent(project, "document-retention-manager", "Document retention and lifecycle", "Document Management"));
+            componentsMap.put("document-archival-system", createComponent(project, "document-archival-system", "Long-term document archival", "Document Management"));
+            componentsMap.put("document-retrieval-service", createComponent(project, "document-retrieval-service", "Fast document retrieval", "Document Management"));
+            componentsMap.put("document-classifier", createComponent(project, "document-classifier", "AI-based document classification", "Document Management"));
+
+            // Verification & Screening Components (9)
+            componentsMap.put("address-verification-service", createComponent(project, "address-verification-service", "Address verification and validation", "Verification & Validation"));
+            componentsMap.put("employment-verification-engine", createComponent(project, "employment-verification-engine", "Employment verification service", "Verification & Validation"));
+            componentsMap.put("income-verification-platform", createComponent(project, "income-verification-platform", "Income verification and analysis", "Verification & Validation"));
+            componentsMap.put("bank-account-verification", createComponent(project, "bank-account-verification", "Bank account verification", "Verification & Validation"));
+            componentsMap.put("credit-check-service", createComponent(project, "credit-check-service", "Credit bureau integration and checks", "Verification & Validation"));
+            componentsMap.put("background-check-engine", createComponent(project, "background-check-engine", "Comprehensive background checks", "Verification & Validation"));
+            componentsMap.put("sanctions-screening-engine", createComponent(project, "sanctions-screening-engine", "Real-time sanctions screening", "Verification & Validation"));
+            componentsMap.put("pep-screening-service", createComponent(project, "pep-screening-service", "PEP and politically exposed persons screening", "Verification & Validation"));
+            componentsMap.put("adverse-media-monitor", createComponent(project, "adverse-media-monitor", "Adverse media monitoring", "Verification & Validation"));
+
+            // Compliance & AML Components (10)
+            componentsMap.put("aml-monitoring-platform", createComponent(project, "aml-monitoring-platform", "Real-time AML monitoring", "Compliance & Regulatory"));
+            componentsMap.put("kyc-refresh-scheduler", createComponent(project, "kyc-refresh-scheduler", "Automated KYC refresh and reviews", "Compliance & Regulatory"));
+            componentsMap.put("transaction-monitoring-engine", createComponent(project, "transaction-monitoring-engine", "Transaction monitoring and alerting", "Compliance & Regulatory"));
+            componentsMap.put("case-management-system", createComponent(project, "case-management-system", "Investigation case management", "Compliance & Regulatory"));
+            componentsMap.put("alert-management-platform", createComponent(project, "alert-management-platform", "Alert triage and management", "Compliance & Regulatory"));
+            componentsMap.put("investigation-workflow", createComponent(project, "investigation-workflow", "Investigation and resolution workflow", "Compliance & Regulatory"));
+            componentsMap.put("sar-filing-system", createComponent(project, "sar-filing-system", "Suspicious activity report filing", "Compliance & Regulatory"));
+            componentsMap.put("regulatory-reporting-engine", createComponent(project, "regulatory-reporting-engine", "Regulatory reporting and submissions", "Compliance & Regulatory"));
+            componentsMap.put("compliance-dashboard", createComponent(project, "compliance-dashboard", "Compliance metrics and dashboards", "Compliance & Regulatory"));
+            componentsMap.put("periodic-review-manager", createComponent(project, "periodic-review-manager", "Periodic customer review management", "Compliance & Regulatory"));
+
+            // Integration & Support Components (8)
+            componentsMap.put("third-party-verification-hub", createComponent(project, "third-party-verification-hub", "Third-party verification integrations", "Integration & Support"));
+            componentsMap.put("credit-bureau-gateway", createComponent(project, "credit-bureau-gateway", "Credit bureau integration gateway", "Integration & Support"));
+            componentsMap.put("government-id-verification", createComponent(project, "government-id-verification", "Government ID verification service", "Integration & Support"));
+            componentsMap.put("api-gateway-kyc", createComponent(project, "api-gateway-kyc", "KYC API gateway and orchestration", "Integration & Support"));
+            componentsMap.put("notification-hub", createComponent(project, "notification-hub", "Multi-channel notification service", "Integration & Support"));
+            componentsMap.put("audit-log-manager", createComponent(project, "audit-log-manager", "Comprehensive audit logging", "Integration & Support"));
+            componentsMap.put("workflow-orchestrator", createComponent(project, "workflow-orchestrator", "Business process orchestration", "Integration & Support"));
+            componentsMap.put("rule-engine", createComponent(project, "rule-engine", "Business rules engine", "Integration & Support"));
         }
+
+        return componentsMap;
     }
 
     private Component createComponent(Project project, String name, String description, String module) {

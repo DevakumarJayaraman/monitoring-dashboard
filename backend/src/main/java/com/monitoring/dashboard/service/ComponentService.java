@@ -1,6 +1,7 @@
 package com.monitoring.dashboard.service;
 
 import com.monitoring.dashboard.dto.ComponentDTO;
+import com.monitoring.dashboard.dto.ComponentWithServicesDTO;
 import com.monitoring.dashboard.model.Component;
 import com.monitoring.dashboard.repository.ComponentRepository;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,21 @@ public class ComponentService {
         log.info("Deleted component with id: {}", id);
     }
 
+    @Transactional(readOnly = true)
+    public List<ComponentWithServicesDTO> getComponentsWithServicesByProjectId(Long projectId) {
+        List<Component> components = componentRepository.findByProject_ProjectId(projectId);
+        return components.stream()
+                .map(this::convertToComponentWithServicesDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public ComponentWithServicesDTO getComponentWithServicesById(Long id) {
+        Component component = componentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Component not found with id: " + id));
+        return convertToComponentWithServicesDTO(component);
+    }
+
     private ComponentDTO convertToDTO(Component component) {
         ComponentDTO dto = new ComponentDTO();
         dto.setComponentId(component.getComponentId());
@@ -93,6 +109,42 @@ public class ComponentService {
         }
 
         dto.setTotalDeployments(component.getDeployments() != null ? component.getDeployments().size() : 0);
+        return dto;
+    }
+
+    private ComponentWithServicesDTO convertToComponentWithServicesDTO(Component component) {
+        ComponentWithServicesDTO dto = new ComponentWithServicesDTO();
+        dto.setComponentId(component.getComponentId());
+        dto.setComponentName(component.getComponentName());
+        dto.setDescription(component.getDescription());
+        dto.setModule(component.getModule());
+
+        if (component.getProject() != null) {
+            dto.setProjectId(component.getProject().getProjectId());
+            dto.setProjectName(component.getProject().getProjectName());
+        }
+
+        // Convert service instances
+        List<ComponentWithServicesDTO.ServiceInstanceDTO> serviceInstanceDTOs =
+                component.getServiceInstances().stream()
+                        .map(si -> new ComponentWithServicesDTO.ServiceInstanceDTO(
+                                si.getInstanceId(),
+                                si.getServiceName(),
+                                si.getMachineName(),
+                                si.getInfraType(),
+                                si.getProfile(),
+                                si.getVersion(),
+                                si.getPort(),
+                                si.getUptimeSeconds(),
+                                si.getStatus(),
+                                si.getLogUrl(),
+                                si.getMetricsUrl()
+                        ))
+                        .collect(Collectors.toList());
+
+        dto.setServiceInstances(serviceInstanceDTOs);
+        dto.setServiceInstanceCount(serviceInstanceDTOs.size());
+
         return dto;
     }
 }

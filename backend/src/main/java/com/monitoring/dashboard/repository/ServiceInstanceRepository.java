@@ -41,4 +41,9 @@ public interface ServiceInstanceRepository extends JpaRepository<ServiceInstance
      * Find all service instances by profile and service name.
      */
     List<ServiceInstance> findByProfileAndServiceName(String profile, String serviceName);
+    
+    /**
+     * Find all service instances by component's project ID.
+     */
+    List<ServiceInstance> findByComponent_Project_ProjectId(Long projectId);
 }

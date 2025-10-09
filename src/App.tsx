@@ -4,8 +4,10 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { Footer } from "./components/layout/Footer";
 import { InfrastructureView } from "./components/infrastructure/InfrastructureView";
 import { ServicesView } from "./components/services/ServicesView";
-import { AddInfrastructureModal, type InfrastructureData } from "./components/modals/AddInfrastructureModal";
+import { ProjectSelection } from "./components/project/ProjectSelection";
+import { InfrastructureFormModal } from "./components/infrastructure/InfrastructureFormModal";
 import { AddServiceModal, type ServiceData } from "./components/modals/AddServiceModal";
+import type { Project } from "./types/project";
 
 type AppView = "infrastructure" | "services";
 
@@ -14,32 +16,46 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAddInfraModalOpen, setIsAddInfraModalOpen] = useState(false);
   const [isAddServiceModalOpen, setIsAddServiceModalOpen] = useState(false);
-
-  const handleSaveInfrastructure = (data: InfrastructureData) => {
-    console.log('New infrastructure data:', data);
-    // Here you would typically send the data to your backend API
-  };
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const handleSaveService = (data: ServiceData) => {
     console.log('New service data:', data);
     // Here you would typically send the data to your backend API
   };
 
+  const handleProjectSelect = (project: Project) => {
+    setSelectedProject(project);
+    console.log('Selected project:', project);
+  };
+
+  const handleBackToProjects = () => {
+    setSelectedProject(null);
+  };
+
+  // Show project selection if no project is selected
+  if (!selectedProject) {
+    return <ProjectSelection onProjectSelect={handleProjectSelect} />;
+  }
+
   const renderContent = () => {
     switch (currentView) {
       case "infrastructure":
-        return <InfrastructureView />;
+        return <InfrastructureView selectedProject={selectedProject} key={refreshTrigger} />;
       case "services":
-        return <ServicesView />;
+        return <ServicesView selectedProject={selectedProject} />;
       default:
-        return <InfrastructureView />;
+        return <InfrastructureView selectedProject={selectedProject} key={refreshTrigger} />;
     }
   };
 
   return (
     <div className="flex flex-col h-screen bg-slate-900">
       {/* Header - Full Width */}
-      <Header />
+      <Header 
+        selectedProject={selectedProject}
+        onBackToProjects={handleBackToProjects}
+      />
 
       {/* Main Content Area with Sidebar */}
       <div className="flex flex-1 overflow-hidden">
@@ -63,10 +79,18 @@ export default function App() {
       <Footer />
 
       {/* Modals */}
-      <AddInfrastructureModal
+      <InfrastructureFormModal
         isOpen={isAddInfraModalOpen}
+        machine={null}
+        projectId={selectedProject ? parseInt(selectedProject.id) : undefined}
         onClose={() => setIsAddInfraModalOpen(false)}
-        onSave={handleSaveInfrastructure}
+        onSuccess={() => {
+          console.log('Infrastructure successfully created/updated via API');
+          setIsAddInfraModalOpen(false);
+          setRefreshTrigger(prev => prev + 1); // Trigger re-render of InfrastructureView
+          // Show success notification (you can add a toast notification library if needed)
+          console.log('Infrastructure list refreshed');
+        }}
       />
       <AddServiceModal
         isOpen={isAddServiceModalOpen}

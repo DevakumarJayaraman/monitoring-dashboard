@@ -1,15 +1,42 @@
 import { useTheme } from "../../context/ThemeContext";
+import type { Project } from "../../types/project";
 
-export function Header() {
+interface HeaderProps {
+  selectedProject?: Project | null;
+  onBackToProjects?: () => void;
+}
+
+export function Header({ selectedProject, onBackToProjects }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="flex h-16 w-full items-center justify-between border-b border-slate-800 bg-slate-900/95 px-6 backdrop-blur-md">
-      <div className="flex items-center gap-4">        
+      <div className="flex items-center gap-4">
+        {/* Back Button */}
+        {selectedProject && onBackToProjects && (
+          <button
+            onClick={onBackToProjects}
+            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-300 transition-all hover:border-emerald-400 hover:text-emerald-400"
+            title="Back to Projects"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="hidden sm:inline">Projects</span>
+          </button>
+        )}
+        
         {/* Application Title */}
-        <h1 className="text-lg font-semibold text-slate-100 hidden sm:block">
-          Application Control & Monitoring
-        </h1>
+        <div>
+          <h1 className="text-lg font-semibold text-slate-100">
+            Application Control & Monitoring
+          </h1>
+          {selectedProject && (
+            <p className="text-xs text-slate-400">
+              {selectedProject.name} <span className="text-slate-600">•</span> {Object.keys(selectedProject.infrastructureByEnv).length} environments
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

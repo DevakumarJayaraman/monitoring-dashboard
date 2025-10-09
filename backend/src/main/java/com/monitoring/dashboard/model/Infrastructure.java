@@ -46,14 +46,9 @@ public class Infrastructure {
     private String infraName; // short name, e.g. "apacqa-vm1"
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "projectId")
+    @JoinColumn(name = "per_id")
     @JsonIgnore
-    private Project project;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "envId")
-    @JsonIgnore
-    private ProjectEnvironment projectEnvironment;
+    private ProjectEnvironmentMapping projectEnvironmentMapping;
 
     @Version
     @Column(name = "version", nullable = false)

@@ -47,13 +47,22 @@ export interface UsageMetric {
 }
 
 export interface ProjectEnvironmentDTO {
-  envId: number;
+  profileId: number;
   projectId: number;
   projectName: string;
-  envCode: string;      // DEV, UAT, STAGING, PROD, COB
-  regionCode?: string;  // APAC, EMEA, NAM
-  profileCode: string;  // apacqa, apacuat, dev, apacprod, etc.
-  description: string;
+  environmentId: number;
+  envCode: string;
+  environmentDescription?: string | null;
+  regionId?: number;
+  regionCode?: string | null;
+  regionDescription?: string | null;
+  perId: number;
+  activeFlag?: boolean | null;
+  mappingCreatedAt?: string | null;
+  profileCode: string;
+  profileDescription?: string | null;
+  status?: string | null;
+  profileCreatedAt?: string | null;
 }
 
 // Detailed Infrastructure Metrics interfaces
@@ -159,6 +168,19 @@ export async function fetchServiceInstancesByStatus(status: string): Promise<Api
   return response.json();
 }
 
+export async function fetchServiceInstancesByProject(projectId: number): Promise<ApiServiceInstance[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/services/instances/project/${projectId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch service instances for project ${projectId}: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching service instances by project:', error);
+    throw error;
+  }
+}
+
 // Infrastructure API calls
 export async function fetchAllInfrastructure(): Promise<ApiInfraDetail[]> {
   try {
@@ -225,6 +247,19 @@ export async function fetchInfrastructureDetailsByType(type: string): Promise<In
     throw new Error(`Failed to fetch infrastructure details by type ${type}: ${response.statusText}`);
   }
   return response.json();
+}
+
+export async function fetchInfrastructureDetailsByProject(projectId: number): Promise<InfraDetailDTO[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/details/project/${projectId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch infrastructure details for project ${projectId}: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching infrastructure details by project:', error);
+    throw error;
+  }
 }
 
 // Create/Update/Delete operations
@@ -359,6 +394,176 @@ export async function stopServiceInstances(instanceIds: string[]): Promise<Servi
     return await response.json();
   } catch (error) {
     console.error('Error stopping service instances:', error);
+    throw error;
+  }
+}
+
+// ==================== Project APIs ====================
+
+export interface ApiProject {
+  id: number;
+  name: string;
+  description: string;
+  totalServices: number;
+  totalInfrastructure: number;
+  healthStatus: 'healthy' | 'warning' | 'critical';
+  lastUpdated: string;
+  // Infrastructure breakdown by environment and type
+  // e.g., { "DEV": { "linux": 5, "windows": 3, "ecs": 2 }, "UAT": {...}, ... }
+  infrastructureByEnv: Record<string, Record<string, number>>;
+}
+
+/**
+ * Fetch all projects with their aggregated statistics
+ */
+export async function fetchAllProjects(): Promise<ApiProject[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch projects: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch a specific project by ID
+ */
+export async function fetchProjectById(projectId: number): Promise<ApiProject> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects/${projectId}`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch project: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching project:', error);
+    throw error;
+  }
+}
+
+/**
+ * Infrastructure CRUD operations
+ */
+
+export interface InfrastructureCreateDTO {
+  infraType: string;
+  hostname: string;
+  ipAddress?: string;
+  environment: string;
+  region?: string;
+  datacenter?: string;
+  status?: string;
+  projectId?: number;
+}
+
+/**
+ * Create new infrastructure
+ */
+export async function createInfrastructure(data: InfrastructureCreateDTO): Promise<InfraDetailDTO> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/infrastructure`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to create infrastructure: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating infrastructure:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update existing infrastructure
+ */
+export async function updateInfrastructure(id: number, data: InfrastructureCreateDTO): Promise<InfraDetailDTO> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to update infrastructure: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating infrastructure:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete infrastructure
+ */
+export async function deleteInfrastructure(id: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete infrastructure: ${response.status}`);
+    }
+  } catch (error) {
+    console.error('Error deleting infrastructure:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get distinct environments
+ */
+export async function fetchDistinctEnvironments(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/metadata/environments`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch environments: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching distinct environments:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get distinct regions
+ */
+export async function fetchDistinctRegions(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/metadata/regions`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch regions: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching distinct regions:', error);
     throw error;
   }
 }

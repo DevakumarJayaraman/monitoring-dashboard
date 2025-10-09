@@ -1,14 +1,25 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 import { Card } from "../Card";
 import { StatusPill, TypeBadge, ServiceStatusBadge } from "../shared/StatusIndicators";
 import { UsageMeter } from "../shared/UsageMeter";
 import { SeparateProgressBars } from "../shared/SeparateProgressBars";
-import { InfraSummaryCard } from "../shared/EcsSummaryCard";
+import { InfrastructureSummary } from "./InfrastructureSummary";
+import { InfrastructureAggregate } from "./InfrastructureAggregate";
+import { InfrastructureFormModal } from "./InfrastructureFormModal";
 import { HousekeepingModal, type HousekeepingInfo, type HousekeepingStep } from "./HousekeepingModal";
 import { infraTypeConfig } from "../../features/infrastructure/config";
-import { formatUptime, InfraDetails } from "../../features/infrastructure/data";
-import type { InfraDetail, ServicesInstance, ServiceStatus, UsageMetric, EcsMetrics } from "../../types/infrastructure";
+import { formatUptime } from "../../features/infrastructure/data";
+import type { InfraDetail, ServicesInstance, ServiceStatus, UsageMetric, EcsMetrics, InfraMetrics, InfraType } from "../../types/infrastructure";
+import { 
+  fetchAllInfrastructureDetails, 
+  fetchAllServiceInstances, 
+  fetchInfrastructureDetailsByProject,
+  fetchServiceInstancesByProject,
+  type InfraDetailDTO 
+} from "../../services/api";
+import type { ApiServiceInstance } from "../../services/api";
+import type { Project } from "../../types/project";
 
 type FileSystemVolume = {
   mount: string;
@@ -73,17 +84,24 @@ function getFileSystemSummary(machine: InfraDetail): FileSystemVolume[] {
   });
 }
 
-type InfraTypeTab = "all" | "ecs" | "linux" | "windows";
+type EnvironmentFilter = 'ALL' | 'DEV' | 'STAGING' | 'PROD_COB';
 
-export function InfrastructureView() {
+interface InfrastructureViewProps {
+  selectedProject: Project | null;
+}
+
+export function InfrastructureView({ selectedProject }: InfrastructureViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
-  const [summaryFilter, setSummaryFilter] = useState<{
-    region: string;
+  const [selectedFilter, setSelectedFilter] = useState<{
     environment: string;
-    infraType: string;
+    region: string;
   } | null>(null);
-  const [activeTab, setActiveTab] = useState<InfraTypeTab>("all");
+  const [environmentFilter, setEnvironmentFilter] = useState<EnvironmentFilter>('ALL');
+  const [infraTypeFilter, setInfraTypeFilter] = useState<InfraType | 'ALL'>('ALL');
+  const [infraDetails, setInfraDetails] = useState<InfraDetail[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [housekeepingModal, setHousekeepingModal] = useState<{
     isOpen: boolean;
     machine: InfraDetail | null;
@@ -106,72 +124,292 @@ export function InfrastructureView() {
     machine: null,
   });
 
+  const [formModal, setFormModal] = useState<{
+    isOpen: boolean;
+    machine: InfraDetail | null; // null for create, InfraDetail for edit
+  }>({
+    isOpen: false,
+    machine: null,
+  });
+
+  // Fetch infrastructure data from backend
+  useEffect(() => {
+    const loadInfrastructure = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        // Fetch infrastructure details and service instances
+        // If a project is selected, fetch only data for that project
+        const [infraData, servicesData] = await Promise.all([
+          selectedProject 
+            ? fetchInfrastructureDetailsByProject(parseInt(selectedProject.id))
+            : fetchAllInfrastructureDetails(),
+          selectedProject
+            ? fetchServiceInstancesByProject(parseInt(selectedProject.id))
+            : fetchAllServiceInstances()
+        ]);
+        
+        // Convert backend data to frontend format
+        const convertedInfra: InfraDetail[] = infraData.map((infra: InfraDetailDTO) => {
+          // Find all service instances for this infrastructure
+          const infraServices = servicesData.filter(
+            (service: ApiServiceInstance) => service.machineName === infra.hostname
+          );
+          
+          // Convert metrics based on infrastructure type
+          let metrics: InfraMetrics | EcsMetrics;
+          if (infra.infraType === 'ecs' && infra.ecsMetrics) {
+            metrics = {
+              cpu: {
+                request: infra.ecsMetrics.cpu.requestMax || 0,
+                limit: infra.ecsMetrics.cpu.limitMax || 0,
+                unit: infra.ecsMetrics.cpu.unit || 'cores',
+              },
+              memory: {
+                request: infra.ecsMetrics.memory.requestMax || 0,
+                limit: infra.ecsMetrics.memory.limitMax || 0,
+                unit: infra.ecsMetrics.memory.unit || 'GiB',
+              },
+              pods: {
+                count: infra.ecsMetrics.pods.used || 0,
+                unit: 'pods',
+              },
+            };
+          } else if (infra.vmMetrics) {
+            metrics = {
+              cpu: {
+                usage: infra.vmMetrics.cpu.used || 0,
+                limit: infra.vmMetrics.cpu.max || 0,
+                unit: infra.vmMetrics.cpu.unit || 'cores',
+              },
+              memory: {
+                usage: infra.vmMetrics.memory.used || 0,
+                limit: infra.vmMetrics.memory.max || 0,
+                unit: infra.vmMetrics.memory.unit || 'GiB',
+              },
+            };
+          }
+          
+          return {
+            id: infra.infraId.toString(),
+            machineName: infra.hostname,
+            region: (infra.region || 'NAM') as "APAC" | "NAM" | "EMEA",
+            environment: (infra.environment || 'DEV') as "DEV" | "UAT" | "PROD" | "COB",
+            datacenter: infra.datacenter || 'Unknown',
+            infraType: infra.infraType,
+            status: (infra.status || 'healthy') as "healthy" | "watch" | "scaling",
+            metrics,
+            projectId: infra.projectId,
+            projectName: infra.projectName,
+            servicesInstances: infraServices.map((service: ApiServiceInstance) => ({
+              id: service.id,
+              serviceName: service.serviceName,
+              machineName: service.machineName,
+              Port: service.port,
+              infraType: service.infraType,
+              profile: service.profile,
+              envType: service.envType,
+              uptime: service.uptime,
+              version: service.version,
+              logURL: service.logURL,
+              metricsURL: service.metricsURL,
+              status: service.status,
+            })),
+            sericesInstances: [], // Legacy field, kept for compatibility
+          };
+        });
+        
+        setInfraDetails(convertedInfra);
+      } catch (err) {
+        console.error('Failed to load infrastructure:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load infrastructure');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadInfrastructure();
+  }, [selectedProject]); // Reload when project changes
+
   const filteredMachines = useMemo(() => {
-    let machines = InfraDetails;
+    let machines = infraDetails;
     
-    // Apply tab filter first
-    if (activeTab !== "all") {
-      machines = machines.filter(machine => machine.infraType === activeTab);
+    // Project filtering is now done at the API level, so we don't need to filter here
+    // The data already contains only the selected project's infrastructure
+    
+    // Apply environment filter
+    if (environmentFilter !== 'ALL') {
+      machines = machines.filter(machine => {
+        if (environmentFilter === 'DEV') {
+          return machine.environment === 'DEV';
+        } else if (environmentFilter === 'STAGING') {
+          return machine.environment === 'UAT' || machine.environment === 'STAGING';
+        } else if (environmentFilter === 'PROD_COB') {
+          return machine.environment === 'PROD' || machine.environment === 'COB';
+        }
+        return true;
+      });
     }
     
-    // Apply summary filter if active
-    if (summaryFilter) {
-      machines = machines.filter(machine => 
-        machine.region === summaryFilter.region &&
-        machine.environment === summaryFilter.environment &&
-        machine.infraType === summaryFilter.infraType
-      );
+    // Apply selected filter if active (from summary card click)
+    // Handle UAT/STAGING equivalence
+    if (selectedFilter) {
+      machines = machines.filter(machine => {
+        const matchesRegion = machine.region === selectedFilter.region;
+        const matchesEnvironment = 
+          machine.environment === selectedFilter.environment ||
+          (selectedFilter.environment === 'UAT' && machine.environment === 'STAGING') ||
+          (selectedFilter.environment === 'STAGING' && machine.environment === 'UAT');
+        return matchesRegion && matchesEnvironment;
+      });
     }
     
-    // Then apply search query
+    // Apply infrastructure type filter (from aggregate card click)
+    if (infraTypeFilter !== 'ALL') {
+      machines = machines.filter(machine => machine.infraType === infraTypeFilter);
+    }
+    
+    // Then apply search query - filter only by machine name
     const normalizedQuery = searchQuery.trim().toLowerCase();
     if (normalizedQuery) {
-      const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
       machines = machines.filter((machine) => {
-        const typeConfig = infraTypeConfig[machine.infraType];
-        const instanceTokens = machine.servicesInstances
-          .map((instance) => `${instance.serviceName} ${instance.profile}`)
-          .join(" ");
-        const haystack = `${machine.machineName} ${machine.infraType} ${typeConfig.label} ${machine.region} ${machine.environment} ${machine.datacenter} ${instanceTokens}`.toLowerCase();
-
-        return tokens.every((token) => haystack.includes(token));
+        return machine.machineName.toLowerCase().includes(normalizedQuery);
       });
     }
     
     return machines;
-  }, [searchQuery, summaryFilter, activeTab]);
+    }, [searchQuery, selectedFilter, environmentFilter, infraTypeFilter, infraDetails]);
+
+  // Filtered machines for aggregate (selected filter only, no search or infra type filter)
+  const aggregateFilteredMachines = useMemo(() => {
+    let machines = infraDetails;
+    
+    // Apply environment filter
+    if (environmentFilter !== 'ALL') {
+      machines = machines.filter(machine => {
+        if (environmentFilter === 'DEV') {
+          return machine.environment === 'DEV';
+        } else if (environmentFilter === 'STAGING') {
+          return machine.environment === 'UAT' || machine.environment === 'STAGING';
+        } else if (environmentFilter === 'PROD_COB') {
+          return machine.environment === 'PROD' || machine.environment === 'COB';
+        }
+        return true;
+      });
+    }
+    
+    // Apply selected filter if active (from summary card click)
+    // Handle UAT/STAGING equivalence
+    if (selectedFilter) {
+      machines = machines.filter(machine => {
+        const matchesRegion = machine.region === selectedFilter.region;
+        const matchesEnvironment = 
+          machine.environment === selectedFilter.environment ||
+          (selectedFilter.environment === 'UAT' && machine.environment === 'STAGING') ||
+          (selectedFilter.environment === 'STAGING' && machine.environment === 'UAT');
+        return matchesRegion && matchesEnvironment;
+      });
+    }
+    
+    return machines;
+  }, [selectedFilter, environmentFilter, infraDetails]);
+
+  // Filtered machines for summary cards (only environment filter, no search/selection)
+  const summaryFilteredMachines = useMemo(() => {
+    let machines = infraDetails;
+    
+    // Project filtering is done at the API level
+    // Apply environment filter
+    if (environmentFilter !== 'ALL') {
+      machines = machines.filter(machine => {
+        if (environmentFilter === 'DEV') {
+          return machine.environment === 'DEV';
+        } else if (environmentFilter === 'STAGING') {
+          return machine.environment === 'UAT' || machine.environment === 'STAGING';
+        } else if (environmentFilter === 'PROD_COB') {
+          return machine.environment === 'PROD' || machine.environment === 'COB';
+        }
+        return true;
+      });
+    }
+    
+    return machines;
+  }, [environmentFilter, infraDetails]);
 
   const resultsLabel = useMemo(() => {
-    return `${filteredMachines.length} of ${InfraDetails.length}`;
-  }, [filteredMachines.length]);
+    return `${filteredMachines.length} of ${infraDetails.length}`;
+  }, [filteredMachines.length, infraDetails.length]);
 
-  const tabCounts = useMemo(() => {
-    const baseMachines = summaryFilter 
-      ? InfraDetails.filter(machine => 
-          machine.region === summaryFilter.region &&
-          machine.environment === summaryFilter.environment &&
-          machine.infraType === summaryFilter.infraType
-        )
-      : InfraDetails;
+  // Group machines by ENV_CODE first, then by REGION
+  const groupedMachines = useMemo(() => {
+    const groups: Record<string, Record<string, InfraDetail[]>> = {};
+    
+    filteredMachines.forEach(machine => {
+      const env = machine.environment;
+      const region = machine.region || 'No Region';
+      
+      if (!groups[env]) {
+        groups[env] = {};
+      }
+      
+      if (!groups[env][region]) {
+        groups[env][region] = [];
+      }
+      
+      groups[env][region].push(machine);
+    });
+    
+    return groups;
+  }, [filteredMachines]);
 
-    return {
-      all: baseMachines.length,
-      ecs: baseMachines.filter(m => m.infraType === "ecs").length,
-      linux: baseMachines.filter(m => m.infraType === "linux").length,
-      windows: baseMachines.filter(m => m.infraType === "windows").length,
-    };
-  }, [summaryFilter]);
+  // Get sorted environment keys (DEV, STAGING, PROD, COB)
+  const sortedEnvs = useMemo(() => {
+    const envOrder = ['DEV', 'STAGING', 'PROD', 'COB'];
+    const sorted = Object.keys(groupedMachines).sort((a, b) => {
+      const indexA = envOrder.indexOf(a);
+      const indexB = envOrder.indexOf(b);
+      if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    });
+    return sorted;
+  }, [groupedMachines]);
 
-  const handleSummaryCardClick = (region: string, environment: string, infraType: string) => {
-    setSummaryFilter({ region, environment, infraType });
-    setActiveTab(infraType as InfraTypeTab);
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-400"></div>
+          <div className="text-slate-400">Loading infrastructure...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="text-rose-400 font-semibold mb-2">Error Loading Infrastructure</div>
+          <div className="text-slate-400">{error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  const handleSummaryCardClick = (environment: string, region: string) => {
+    setSelectedFilter({ environment, region });
     setExpandedMachines(new Set());
   };
 
   const handleClearFilter = () => {
-    setSummaryFilter(null);
+    setSelectedFilter(null);
+    setInfraTypeFilter('ALL');
     setSearchQuery("");
-    setActiveTab("all");
     setExpandedMachines(new Set());
   };
 
@@ -410,110 +648,76 @@ export function InfrastructureView() {
 
   return (
     <div className="space-y-6">
-      {/* Infrastructure Type Tabs - Moved to Top */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-slate-100">Infrastructure Overview</h2>
-        
         <div className="flex items-center gap-3">
-          {/* Tab Switch Icons */}
-          <div className="flex items-center rounded-lg border border-slate-600 bg-slate-800/50 p-1">
-            {[
-            { 
-              id: "all" as const, 
-              label: "All", 
-              icon: (
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-              )
-            },
-            { 
-              id: "ecs" as const, 
-              label: "ECS", 
-              icon: (
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              )
-            },
-            { 
-              id: "linux" as const, 
-              label: "Linux", 
-              icon: (
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              )
-            },
-            { 
-              id: "windows" as const, 
-              label: "Windows", 
-              icon: (
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M0 3.45v6.55l10-1.27v-6.55l-10 1.27zm11 1.15v6.4l13-1.7v-6.4l-13 1.7zm-11 7.75v6.55l10 1.27v-6.55l-10-1.27zm11 1.15v6.4l13 1.7v-6.4l-13-1.7z" />
-                </svg>
-              )
-            },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                // Clear summary filter if it doesn't match the new tab
-                if (summaryFilter && tab.id !== "all" && summaryFilter.infraType !== tab.id) {
-                  setSummaryFilter(null);
-                }
-                // Also clear summary filter when switching to "all" tab
-                if (tab.id === "all" && summaryFilter) {
-                  setSummaryFilter(null);
-                }
-                setExpandedMachines(new Set());
-              }}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === tab.id
-                  ? "bg-emerald-500 text-emerald-950 shadow-md"
-                  : "text-slate-300 hover:bg-slate-700 hover:text-slate-100"
-              }`}
-              title={`Show ${tab.label} Infrastructure`}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-              {tabCounts[tab.id] > 0 && (
-                <span className={`ml-1 rounded-full px-1.5 py-0.5 text-xs font-semibold ${
-                  activeTab === tab.id
-                    ? "bg-emerald-600 text-emerald-100"
-                    : "bg-slate-600 text-slate-300"
-                }`}>
-                  {tabCounts[tab.id]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+          <button
+            onClick={() => setFormModal({ isOpen: true, machine: null })}
+            className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:from-emerald-700 hover:to-green-700 hover:shadow-lg"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Add Infrastructure</span>
+          </button>
+          <select
+            value={environmentFilter}
+            onChange={(e) => {
+              setEnvironmentFilter(e.target.value as EnvironmentFilter);
+              setSelectedFilter(null); // Reset selected filter when environment changes
+              setExpandedMachines(new Set()); // Also reset expanded machines
+            }}
+            className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm transition-colors hover:border-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+          >
+            <option value="ALL">All Environments</option>
+            <option value="DEV">Development</option>
+            <option value="STAGING">Staging / UAT</option>
+            <option value="PROD_COB">Production / COB</option>
+          </select>
         </div>
       </div>
 
-      {/* Infrastructure Summary Card - Filtered by Active Tab */}
-      <InfraSummaryCard 
-        infraDetails={activeTab === "all" ? InfraDetails : InfraDetails.filter(machine => machine.infraType === activeTab)}
-        onSummaryCardClick={handleSummaryCardClick}
-        selectedFilter={summaryFilter}
+      {/* Infrastructure Summary - Card-based grid view */}
+      <InfrastructureSummary
+        infraDetails={summaryFilteredMachines}
+        onCardClick={handleSummaryCardClick}
+        selectedFilter={selectedFilter}
       />
 
       {/* Search and Filter Controls */}
       <div className="space-y-4">
-        {summaryFilter && (
-          <div className="flex items-center gap-4 rounded-lg border border-emerald-400/50 bg-emerald-500/10 px-4 py-3 text-sm">
-            <span className="text-emerald-100">
-              Filtered by: <strong>{summaryFilter.region} • {summaryFilter.environment} • {summaryFilter.infraType.toUpperCase()}</strong>
-            </span>
-            <button
-              onClick={handleClearFilter}
-              className="rounded-full border border-emerald-400/70 px-3 py-1 text-xs font-medium text-emerald-200 transition hover:border-emerald-300 hover:text-emerald-100"
-            >
-              Clear Filter
-            </button>
-          </div>
+        {selectedFilter && (
+          <>
+            <div className="flex items-center gap-4 rounded-lg border border-emerald-400/50 bg-emerald-500/10 px-4 py-3 text-sm">
+              <span className="text-emerald-100">
+                Filtered by: <strong>{selectedFilter.environment} • {selectedFilter.region}</strong>
+                {infraTypeFilter !== 'ALL' && (
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-600/40 px-2 py-0.5 text-xs font-semibold">
+                    • {infraTypeFilter.toUpperCase()}
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={handleClearFilter}
+                className="rounded-full border border-emerald-400/70 px-3 py-1 text-xs font-medium text-emerald-200 transition hover:border-emerald-300 hover:text-emerald-100"
+              >
+                Clear Filter
+              </button>
+            </div>
+            
+            {/* Aggregate Summary */}
+            <InfrastructureAggregate 
+              machines={aggregateFilteredMachines}
+              environment={selectedFilter.environment}
+              region={selectedFilter.region}
+              onInfraTypeClick={(infraType) => {
+                setInfraTypeFilter(infraType);
+                setSearchQuery(""); // Clear search when clicking aggregate card
+              }}
+              selectedInfraType={infraTypeFilter}
+            />
+          </>
         )}
         
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -523,7 +727,7 @@ export function InfrastructureView() {
               className="w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-100 shadow-inner placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
               type="search"
               name="machine-search"
-              placeholder="Search by name, type, datacenter, or service"
+              placeholder="Search by Machine Name"
               value={searchQuery}
               onChange={(event) => {
                 setSearchQuery(event.target.value);
@@ -531,14 +735,15 @@ export function InfrastructureView() {
               }}
             />
           </label>
+          
           <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Showing {resultsLabel}
           </span>
         </div>
       </div>
 
-      {/* Full-width Infrastructure Cards */}
-      <div className="space-y-4">
+      {/* Grouped Infrastructure Cards by Environment and Region */}
+      <div className="space-y-8">
         {filteredMachines.length === 0 ? (
           <div className="rounded-xl border border-slate-400/50 bg-slate-500/10 px-6 py-8 text-center text-sm text-slate-300">
             <div className="mb-3">
@@ -548,13 +753,36 @@ export function InfrastructureView() {
             </div>
             <p className="font-medium text-slate-200 mb-2">No Infrastructure Found</p>
             <p className="text-slate-400">
-              {summaryFilter 
+              {selectedFilter 
                 ? "No machines match the current filter. Try adjusting your search criteria or clearing the filter."
                 : "No machines found for the selected infrastructure type. Try selecting a different tab or using the search box."}
             </p>
           </div>
         ) : (
-          filteredMachines.map((machine) => {
+          sortedEnvs.map((env) => {
+            const regionGroups = groupedMachines[env];
+            const sortedRegions = Object.keys(regionGroups).sort();
+            
+            return (
+              <div key={env} className="space-y-6">
+                {/* Regions within Environment */}
+                {sortedRegions.map((region) => {
+                  const machines = regionGroups[region];
+                  
+                  return (
+                    <div key={`${env}-${region}`} className="space-y-4">
+                      {/* Region Subheader */}
+                      <div className="flex items-center gap-2 pl-4">
+                        <div className="h-px flex-1 bg-slate-700"></div>
+                        <h4 className="text-sm font-medium text-slate-400">
+                          {region} Region • {machines.length} machine{machines.length !== 1 ? 's' : ''}
+                        </h4>
+                        <div className="h-px flex-1 bg-slate-700"></div>
+                      </div>
+
+                      {/* Machines in this Region */}
+                      <div className="space-y-4 pl-8">
+                        {machines.map((machine) => {
             const typeConfig = infraTypeConfig[machine.infraType];
             const Icon = typeConfig.icon;
             const isExpanded = expandedMachines.has(machine.machineName);
@@ -589,6 +817,17 @@ export function InfrastructureView() {
                   </div>
                   
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setFormModal({ isOpen: true, machine })}
+                      className="flex items-center gap-2 rounded-lg border border-blue-500/60 bg-gradient-to-r from-blue-500/20 to-sky-500/20 px-3 py-2 text-sm font-semibold text-blue-100 shadow-sm transition-all duration-200 hover:border-blue-400 hover:from-blue-500/30 hover:to-sky-500/30 hover:shadow-md hover:shadow-blue-500/20"
+                      title="Edit Infrastructure"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      <span className="hidden sm:inline">Edit</span>
+                    </button>
+
                     <button
                       onClick={() => handleRemoveClick(machine)}
                       className="flex items-center gap-2 rounded-lg border border-rose-500/60 bg-gradient-to-r from-rose-500/20 to-red-500/20 px-3 py-2 text-sm font-semibold text-rose-100 shadow-sm transition-all duration-200 hover:border-rose-400 hover:from-rose-500/30 hover:to-red-500/30 hover:shadow-md hover:shadow-rose-500/20"
@@ -732,6 +971,13 @@ export function InfrastructureView() {
                 )}
               </Card>
             );
+          })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
           })
         )}
       </div>
@@ -820,6 +1066,106 @@ export function InfrastructureView() {
         step={housekeepingModal.step}
         onConfirm={handleHousekeepingConfirm}
         onCancel={handleHousekeepingCancel}
+      />
+
+      {/* Infrastructure Form Modal (Add/Edit) */}
+      <InfrastructureFormModal
+        isOpen={formModal.isOpen}
+        machine={formModal.machine}
+        projectId={selectedProject ? parseInt(selectedProject.id) : undefined}
+        onClose={() => setFormModal({ isOpen: false, machine: null })}
+        onSuccess={() => {
+          // Reload infrastructure data
+          setFormModal({ isOpen: false, machine: null });
+          // Trigger a re-fetch by changing a dependency or calling the load function
+          const loadInfrastructure = async () => {
+            try {
+              setIsLoading(true);
+              const [infraData, servicesData] = await Promise.all([
+                selectedProject 
+                  ? fetchInfrastructureDetailsByProject(parseInt(selectedProject.id))
+                  : fetchAllInfrastructureDetails(),
+                selectedProject
+                  ? fetchServiceInstancesByProject(parseInt(selectedProject.id))
+                  : fetchAllServiceInstances()
+              ]);
+              
+              const convertedInfra: InfraDetail[] = infraData.map((infra: InfraDetailDTO) => {
+                const infraServices = servicesData.filter(
+                  (service: ApiServiceInstance) => service.machineName === infra.hostname
+                );
+                
+                let metrics: InfraMetrics | EcsMetrics;
+                if (infra.infraType === 'ecs' && infra.ecsMetrics) {
+                  metrics = {
+                    cpu: {
+                      request: infra.ecsMetrics.cpu.requestMax || 0,
+                      limit: infra.ecsMetrics.cpu.limitMax || 0,
+                      unit: infra.ecsMetrics.cpu.unit || 'cores',
+                    },
+                    memory: {
+                      request: infra.ecsMetrics.memory.requestMax || 0,
+                      limit: infra.ecsMetrics.memory.limitMax || 0,
+                      unit: infra.ecsMetrics.memory.unit || 'GiB',
+                    },
+                    pods: {
+                      count: infra.ecsMetrics.pods.used || 0,
+                      unit: 'pods',
+                    },
+                  };
+                } else if (infra.vmMetrics) {
+                  metrics = {
+                    cpu: {
+                      usage: infra.vmMetrics.cpu.used || 0,
+                      limit: infra.vmMetrics.cpu.max || 0,
+                      unit: infra.vmMetrics.cpu.unit || 'cores',
+                    },
+                    memory: {
+                      usage: infra.vmMetrics.memory.used || 0,
+                      limit: infra.vmMetrics.memory.max || 0,
+                      unit: infra.vmMetrics.memory.unit || 'GiB',
+                    },
+                  };
+                }
+                
+                return {
+                  id: infra.infraId.toString(),
+                  machineName: infra.hostname,
+                  region: (infra.region || 'NAM') as "APAC" | "NAM" | "EMEA",
+                  environment: (infra.environment || 'DEV') as "DEV" | "UAT" | "STAGING" | "PROD" | "COB",
+                  datacenter: infra.datacenter || 'Unknown',
+                  infraType: infra.infraType,
+                  status: (infra.status || 'healthy') as "healthy" | "watch" | "scaling",
+                  metrics,
+                  projectId: infra.projectId,
+                  projectName: infra.projectName,
+                  servicesInstances: infraServices.map((service: ApiServiceInstance) => ({
+                    id: service.id,
+                    serviceName: service.serviceName,
+                    machineName: service.machineName,
+                    Port: service.port,
+                    infraType: service.infraType,
+                    profile: service.profile,
+                    envType: service.envType,
+                    uptime: service.uptime,
+                    version: service.version,
+                    logURL: service.logURL,
+                    metricsURL: service.metricsURL,
+                    status: service.status,
+                  })),
+                  sericesInstances: [],
+                };
+              });
+              
+              setInfraDetails(convertedInfra);
+            } catch (err) {
+              console.error('Failed to reload infrastructure:', err);
+            } finally {
+              setIsLoading(false);
+            }
+          };
+          loadInfrastructure();
+        }}
       />
     </div>
   );

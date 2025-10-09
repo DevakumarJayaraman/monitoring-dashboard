@@ -50,6 +50,10 @@ public class ServiceInstance {
     @Column(name = "metricsUrl", length = 500)
     private String metricsUrl;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "componentId")
+    private Component component;
+
     /**
      * Version field for JPA optimistic locking.
      */

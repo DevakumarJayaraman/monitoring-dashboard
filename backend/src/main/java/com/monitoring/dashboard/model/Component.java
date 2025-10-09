@@ -33,7 +33,12 @@ public class Component {
     @Column(name = "version", nullable = false)
     private Long version = 0L;
     @OneToMany(mappedBy = "component", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
     private List<ComponentDeployment> deployments = new ArrayList<>();
     @OneToMany(mappedBy = "component", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
     private List<DeploymentConfig> deploymentConfigs = new ArrayList<>();
+    @OneToMany(mappedBy = "component", cascade = CascadeType.ALL)
+    @JsonIgnore
+    private List<ServiceInstance> serviceInstances = new ArrayList<>();
 }

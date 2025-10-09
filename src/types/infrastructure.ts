@@ -113,13 +113,15 @@ export type InfraDetail = {
   id: string;
   machineName: string;
   region: "APAC" | "NAM" | "EMEA";
-  environment: "DEV" | "UAT" | "PROD" | "COB";
+  environment: "DEV" | "UAT" | "STAGING" | "PROD" | "COB";
   datacenter: string;
   infraType: InfraType;
   status: StatusLevel;
   metrics: InfraMetrics | EcsMetrics;
   servicesInstances: ServicesInstance[];
   sericesInstances: string[];
+  projectId?: number;
+  projectName?: string;
 };
 
 export type BuildMachineOptions = {

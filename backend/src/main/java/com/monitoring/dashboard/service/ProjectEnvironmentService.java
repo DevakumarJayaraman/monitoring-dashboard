@@ -1,7 +1,11 @@
 package com.monitoring.dashboard.service;
 
 import com.monitoring.dashboard.dto.ProjectEnvironmentDTO;
-import com.monitoring.dashboard.model.ProjectEnvironment;
+import com.monitoring.dashboard.model.Environment;
+import com.monitoring.dashboard.model.Project;
+import com.monitoring.dashboard.model.ProjectProfiles;
+import com.monitoring.dashboard.model.ProjectEnvironmentMapping;
+import com.monitoring.dashboard.model.Region;
 import com.monitoring.dashboard.repository.ProjectEnvironmentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +16,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Service layer for managing project environments.
+ * Service layer for managing project environments and profiles.
  */
 @Service
 @RequiredArgsConstructor
@@ -22,7 +26,7 @@ public class ProjectEnvironmentService {
     private final ProjectEnvironmentRepository projectEnvironmentRepository;
 
     /**
-     * Get all project environments.
+     * Get all project environment profiles.
      */
     @Transactional(readOnly = true)
     public List<ProjectEnvironmentDTO> getAllEnvironments() {
@@ -32,47 +36,47 @@ public class ProjectEnvironmentService {
     }
 
     /**
-     * Get environment by ID.
+     * Get environment profile by ID.
      */
     @Transactional(readOnly = true)
     public ProjectEnvironmentDTO getEnvironmentById(Long id) {
-        ProjectEnvironment env = projectEnvironmentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Environment not found with id: " + id));
+        ProjectProfiles env = projectEnvironmentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Environment profile not found with id: " + id));
         return convertToDTO(env);
     }
 
     /**
-     * Get all environments for a specific project.
+     * Get all environment profiles for a specific project.
      */
     @Transactional(readOnly = true)
     public List<ProjectEnvironmentDTO> getEnvironmentsByProject(Long projectId) {
-        return projectEnvironmentRepository.findByProjectId(projectId).stream()
+        return projectEnvironmentRepository.findByProjectEnvironmentMappingProjectProjectId(projectId).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Get environments by environment code (DEV, UAT, STAGING, PROD, COB).
+     * Get environment profiles by environment code (DEV, STAGING, PROD, COB).
      */
     @Transactional(readOnly = true)
     public List<ProjectEnvironmentDTO> getEnvironmentsByEnvCode(String envCode) {
-        return projectEnvironmentRepository.findByEnvCode(envCode).stream()
+        return projectEnvironmentRepository.findByProjectEnvironmentMappingEnvironmentEnvCode(envCode).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Get environments by region code (APAC, EMEA, NAM).
+     * Get environment profiles by region code (APAC, EMEA, NAM, etc.).
      */
     @Transactional(readOnly = true)
     public List<ProjectEnvironmentDTO> getEnvironmentsByRegion(String regionCode) {
-        return projectEnvironmentRepository.findByRegionCode(regionCode).stream()
+        return projectEnvironmentRepository.findByProjectEnvironmentMappingRegionRegionCode(regionCode).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Get environments by profile code.
+     * Get environment profiles by profile code.
      */
     @Transactional(readOnly = true)
     public List<ProjectEnvironmentDTO> getEnvironmentsByProfile(String profileCode) {
@@ -87,7 +91,7 @@ public class ProjectEnvironmentService {
     @Transactional(readOnly = true)
     public List<String> getAllProfiles() {
         return projectEnvironmentRepository.findAll().stream()
-                .map(ProjectEnvironment::getProfileCode)
+                .map(ProjectProfiles::getProfileCode)
                 .filter(profile -> profile != null && !profile.isEmpty())
                 .distinct()
                 .sorted()
@@ -95,21 +99,43 @@ public class ProjectEnvironmentService {
     }
 
     /**
-     * Convert ProjectEnvironment entity to DTO.
+     * Convert ProjectProfiles entity to DTO.
      */
-    private ProjectEnvironmentDTO convertToDTO(ProjectEnvironment env) {
+    private ProjectEnvironmentDTO convertToDTO(ProjectProfiles profile) {
         ProjectEnvironmentDTO dto = new ProjectEnvironmentDTO();
-        dto.setEnvId(env.getEnvId());
-        dto.setEnvCode(env.getEnvCode());
-        dto.setRegionCode(env.getRegionCode());
-        dto.setProfileCode(env.getProfileCode());
-        dto.setDescription(env.getDescription());
-        
-        if (env.getProject() != null) {
-            dto.setProjectId(env.getProject().getProjectId());
-            dto.setProjectName(env.getProject().getProjectName());
+        dto.setProfileId(profile.getProfileId());
+        dto.setProfileCode(profile.getProfileCode());
+        dto.setProfileDescription(profile.getProfileDesc());
+        dto.setStatus(profile.getStatus());
+        dto.setProfileCreatedAt(profile.getCreatedAt());
+
+        ProjectEnvironmentMapping mapping = profile.getProjectEnvironmentMapping();
+        if (mapping != null) {
+            dto.setPerId(mapping.getPerId());
+            dto.setActiveFlag(mapping.getActiveFlag());
+            dto.setMappingCreatedAt(mapping.getCreatedAt());
+
+            Project project = mapping.getProject();
+            if (project != null) {
+                dto.setProjectId(project.getProjectId());
+                dto.setProjectName(project.getProjectName());
+            }
+
+            Environment environment = mapping.getEnvironment();
+            if (environment != null) {
+                dto.setEnvironmentId(environment.getEnvId());
+                dto.setEnvCode(environment.getEnvCode());
+                dto.setEnvironmentDescription(environment.getEnvDesc());
+            }
+
+            Region region = mapping.getRegion();
+            if (region != null) {
+                dto.setRegionId(region.getRegionId());
+                dto.setRegionCode(region.getRegionCode());
+                dto.setRegionDescription(region.getRegionDesc());
+            }
         }
-        
+
         return dto;
     }
 }

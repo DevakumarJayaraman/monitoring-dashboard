@@ -4,8 +4,10 @@ import com.monitoring.dashboard.dto.InfraDetailDTO;
 import com.monitoring.dashboard.dto.InfrastructureDTO;
 import com.monitoring.dashboard.model.Infrastructure;
 import com.monitoring.dashboard.model.InfraMetrics;
+import com.monitoring.dashboard.model.ProjectEnvironmentMapping;
 import com.monitoring.dashboard.repository.InfraMetricsRepository;
 import com.monitoring.dashboard.repository.InfrastructureRepository;
+import com.monitoring.dashboard.repository.ProjectEnvironmentMappingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,7 @@ public class InfrastructureService {
 
     private final InfrastructureRepository infrastructureRepository;
     private final InfraMetricsRepository infraMetricsRepository;
+    private final ProjectEnvironmentMappingRepository projectEnvironmentMappingRepository;
 
     @Transactional(readOnly = true)
     public List<InfrastructureDTO> getAllInfrastructure() {
@@ -71,6 +74,24 @@ public class InfrastructureService {
         infra.setHostname(dto.getHostname());
         infra.setIpAddress(dto.getIpAddress());
         infra.setEnvironment(dto.getEnvironment());
+        infra.setRegion(dto.getRegion());
+        infra.setDatacenter(dto.getDatacenter());
+        infra.setStatus(dto.getStatus() != null ? dto.getStatus() : "healthy");
+
+        // Set ProjectEnvironmentMapping if projectId, environment, and region are provided
+        if (dto.getProjectId() != null && dto.getEnvironment() != null && dto.getRegion() != null) {
+            ProjectEnvironmentMapping mapping = projectEnvironmentMappingRepository
+                .findByProjectProjectIdAndEnvironmentEnvCodeAndRegionRegionCode(
+                    dto.getProjectId(),
+                    dto.getEnvironment(),
+                    dto.getRegion()
+                )
+                .orElseThrow(() -> new RuntimeException(
+                    String.format("No ProjectEnvironmentMapping found for projectId=%d, environment=%s, region=%s",
+                        dto.getProjectId(), dto.getEnvironment(), dto.getRegion())
+                ));
+            infra.setProjectEnvironmentMapping(mapping);
+        }
 
         Infrastructure saved = infrastructureRepository.save(infra);
         
@@ -86,7 +107,8 @@ public class InfrastructureService {
             }
         }
 
-        log.info("Created infrastructure: {}", saved.getHostname());
+        log.info("Created infrastructure: {} with per_id: {}", saved.getHostname(),
+            saved.getProjectEnvironmentMapping() != null ? saved.getProjectEnvironmentMapping().getPerId() : "null");
         return convertToDTO(saved);
     }
 
@@ -145,6 +167,17 @@ public class InfrastructureService {
     }
 
     /**
+     * Get infrastructure details by project ID.
+     */
+    @Transactional(readOnly = true)
+    public List<InfraDetailDTO> getInfrastructureDetailsByProject(Long projectId) {
+        log.info("Fetching infrastructure details for project ID: {}", projectId);
+        return infrastructureRepository.findByProjectEnvironmentMapping_Project_ProjectId(projectId).stream()
+                .map(this::convertToDetailDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Convert Infrastructure entity to detailed DTO with metrics.
      */
     private InfraDetailDTO convertToDetailDTO(Infrastructure infra) {
@@ -158,9 +191,11 @@ public class InfrastructureService {
         dto.setDatacenter(infra.getDatacenter());
         dto.setStatus(infra.getStatus());
 
-        if (infra.getProject() != null) {
-            dto.setProjectId(infra.getProject().getProjectId());
-            dto.setProjectName(infra.getProject().getProjectName());
+        // Access project through ProjectEnvironmentMapping
+        if (infra.getProjectEnvironmentMapping() != null &&
+            infra.getProjectEnvironmentMapping().getProject() != null) {
+            dto.setProjectId(infra.getProjectEnvironmentMapping().getProject().getProjectId());
+            dto.setProjectName(infra.getProjectEnvironmentMapping().getProject().getProjectName());
         }
 
         // Get all metrics for this infrastructure
@@ -350,10 +385,11 @@ public class InfrastructureService {
         dto.setDatacenter(infra.getDatacenter());
         dto.setStatus(infra.getStatus());
 
-        // Add project information
-        if (infra.getProject() != null) {
-            dto.setProjectId(infra.getProject().getProjectId());
-            dto.setProjectName(infra.getProject().getProjectName());
+        // Access project through ProjectEnvironmentMapping
+        if (infra.getProjectEnvironmentMapping() != null &&
+            infra.getProjectEnvironmentMapping().getProject() != null) {
+            dto.setProjectId(infra.getProjectEnvironmentMapping().getProject().getProjectId());
+            dto.setProjectName(infra.getProjectEnvironmentMapping().getProject().getProjectName());
         }
 
         // Add resource limits (metrics ending with _limit)
@@ -382,5 +418,25 @@ public class InfrastructureService {
                 .collect(Collectors.toList()));
 
         return dto;
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getDistinctEnvironments() {
+        return infrastructureRepository.findAll().stream()
+                .map(Infrastructure::getEnvironment)
+                .filter(env -> env != null && !env.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getDistinctRegions() {
+        return infrastructureRepository.findAll().stream()
+                .map(Infrastructure::getRegion)
+                .filter(region -> region != null && !region.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
     }
 }

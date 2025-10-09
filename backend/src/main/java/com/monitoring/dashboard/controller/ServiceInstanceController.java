@@ -118,6 +118,19 @@ public class ServiceInstanceController {
     }
 
     /**
+     * Get service instances by project.
+     */
+    @GetMapping("/instances/project/{projectId}")
+    @Operation(summary = "Get service instances by project", description = "Retrieves all service instances for a specific project")
+    public ResponseEntity<List<ServiceInstanceDTO>> getServiceInstancesByProject(
+            @Parameter(description = "Project ID") @PathVariable Long projectId) {
+        log.info("GET /api/services/instances/project/{} - Fetching instances", projectId);
+        List<ServiceInstanceDTO> instances = serviceInstanceService.getServiceInstancesByProject(projectId);
+        log.info("Found {} instances for project {}", instances.size(), projectId);
+        return ResponseEntity.ok(instances);
+    }
+
+    /**
      * Create a new service instance.
      */
     @PostMapping("/instances")

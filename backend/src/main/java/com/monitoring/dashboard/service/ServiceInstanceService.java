@@ -3,7 +3,7 @@ package com.monitoring.dashboard.service;
 import com.monitoring.dashboard.dto.ServiceActionRequest;
 import com.monitoring.dashboard.dto.ServiceActionResponse;
 import com.monitoring.dashboard.dto.ServiceInstanceDTO;
-import com.monitoring.dashboard.model.ProjectEnvironment;
+import com.monitoring.dashboard.model.ProjectProfiles;
 import com.monitoring.dashboard.model.ServiceInstance;
 import com.monitoring.dashboard.repository.ProjectEnvironmentRepository;
 import com.monitoring.dashboard.repository.ServiceInstanceRepository;
@@ -94,6 +94,17 @@ public class ServiceInstanceService {
     @Transactional(readOnly = true)
     public List<ServiceInstanceDTO> getServiceInstancesByStatus(String status) {
         return serviceInstanceRepository.findByStatus(status).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all service instances by project ID.
+     */
+    @Transactional(readOnly = true)
+    public List<ServiceInstanceDTO> getServiceInstancesByProject(Long projectId) {
+        log.info("Fetching service instances for project ID: {}", projectId);
+        return serviceInstanceRepository.findByComponent_Project_ProjectId(projectId).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -351,8 +362,8 @@ public class ServiceInstanceService {
     }
     
     /**
-     * Determine environment type from profile code by looking up ProjectEnvironment.
-     * Uses the actual envCode from the ProjectEnvironment entity rather than parsing the profile string.
+     * Determine environment type from profile code by looking up ProjectProfiles.
+     * Uses the actual envCode from the ProjectProfiles entity rather than parsing the profile string.
      * DEV: dev
      * STAGING: qa, uat, dailyrefresh profiles
      * PROD: prod profiles
@@ -363,17 +374,17 @@ public class ServiceInstanceService {
             return "STAGING"; // default
         }
         
-        // Look up the ProjectEnvironment by profileCode to get the actual envCode
-        List<ProjectEnvironment> environments = projectEnvironmentRepository.findByProfileCode(profileCode);
-        
+        // Look up the ProjectProfiles by profileCode to get the actual envCode
+        List<ProjectProfiles> environments = projectEnvironmentRepository.findByProfileCode(profileCode);
+
         if (!environments.isEmpty()) {
-            ProjectEnvironment env = environments.get(0); // Get first matching environment
+            ProjectProfiles env = environments.get(0); // Get first matching environment
             if (env.getEnvCode() != null) {
                 return env.getEnvCode(); // Returns DEV, STAGING, PROD, or COB
             }
         }
-        
-        // Fallback to string matching if no ProjectEnvironment found (backward compatibility)
+
+        // Fallback to string matching if no ProjectProfiles found (backward compatibility)
         String lowerProfile = profileCode.toLowerCase();
         
         if (lowerProfile.equals("dev")) {

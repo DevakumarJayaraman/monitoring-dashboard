@@ -19,10 +19,12 @@ import type {
 } from "../../types/infrastructure";
 import { 
   fetchAllServiceInstances, 
+  fetchServiceInstancesByProject,
   startServiceInstances, 
   stopServiceInstances,
   type ServiceActionResponse 
 } from "../../services/api";
+import type { Project } from "../../types/project";
 
 type ServiceCard = {
   name: string;
@@ -47,7 +49,11 @@ const normaliseStatus = (instance: ServicesInstance): ServiceStatus => {
   return "running";
 };
 
-export function ServicesView(): JSX.Element {
+interface ServicesViewProps {
+  selectedProject: Project | null;
+}
+
+export function ServicesView({ selectedProject }: ServicesViewProps): JSX.Element {
   const [activeProfiles, setActiveProfiles] = useState<ServiceProfileKey[]>([]);
   const [environmentFilter, setEnvironmentFilter] = useState<EnvironmentFilter>('ALL');
   const [selectedInstances, setSelectedInstances] = useState<Record<string, string[]>>({});
@@ -83,7 +89,11 @@ export function ServicesView(): JSX.Element {
         setIsLoading(true);
       }
       setError(null);
-      const apiInstances = await fetchAllServiceInstances();
+      
+      // Fetch services filtered by project if one is selected
+      const apiInstances = selectedProject
+        ? await fetchServiceInstancesByProject(parseInt(selectedProject.id))
+        : await fetchAllServiceInstances();
       
       // Convert API instances to frontend format
       const convertedInstances: ServicesInstance[] = apiInstances.map((api) => ({
@@ -109,7 +119,7 @@ export function ServicesView(): JSX.Element {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [selectedProject]); // Reload when project changes
 
   useEffect(() => {
     loadServices();
