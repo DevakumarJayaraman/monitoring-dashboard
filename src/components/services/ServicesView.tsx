@@ -683,80 +683,300 @@ export function ServicesView({ selectedProject }: ServicesViewProps): JSX.Elemen
       </div>
       )}
       
-      {/* Split Screen Layout */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        {/* Left Side - Service Cards */}
-        <div className="space-y-6 p-0.5">
-          {activeProfiles.length > 0 ? (
-            filteredServices.map((service) => {
-          const serviceKey = `${service.profile}-${service.name}`;
-          const isSelected = selectedServiceKey === serviceKey;
-          const statusCounts = getStatusCounts(service.instances);
-          const totalInstances = service.instances.length;
-          const allProfileStats = getServiceProfileStats(service.name);
-          
-          // Filter profile stats to only show selected profiles
-          const perProfileStats = service.profile === "all" 
-            ? allProfileStats.filter(stat => activeProfiles.includes(stat.profileKey))
-            : allProfileStats;
-            
-          const profileStat =
-            service.profile !== "all"
-              ? perProfileStats.find((stat) => stat.profileKey === (service.profile as NonAllProfile))
-              : undefined;
+      {/* Service Cards */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+        {activeProfiles.length > 0 ? (
+          filteredServices.map((service) => {
+            const serviceKey = `${service.profile}-${service.name}`;
+            const isSelected = selectedServiceKey === serviceKey;
+            const statusCounts = getStatusCounts(service.instances);
+            const totalInstances = service.instances.length;
+            const allProfileStats = getServiceProfileStats(service.name);
 
-          return (
-            <Card
-              key={serviceKey}
-              title={service.name}
-              icon={<ServiceGlyph />}
-              iconWrapperClassName={isSelected ? "text-emerald-200" : "text-emerald-300"}
-              className={`${
-                isSelected 
-                  ? "border-emerald-400/70 bg-emerald-950/30 shadow-lg shadow-emerald-400/10 ring-1 ring-emerald-400/20" 
-                  : "border-slate-800 bg-slate-900/70 hover:border-emerald-300/60 cursor-pointer"
-              } transition-all duration-200`}
-              contentClassName="space-y-3 text-slate-200"
-              onClick={() => toggleServiceExpanded(service.profile, service.name)}
-            >
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <p className="text-sm leading-relaxed text-slate-200">{service.summary}</p>
-                  {service.profile === "all" ? (
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {perProfileStats.map(({ profileKey, running, total }) => (
-                        <span
-                          key={profileKey}
-                          className={`rounded-full px-3 py-1 border ${getStatusBadgeClass(running, total)}`}
+            const perProfileStats =
+              service.profile === "all"
+                ? allProfileStats.filter((stat) => activeProfiles.includes(stat.profileKey))
+                : allProfileStats;
+
+            const profileStat =
+              service.profile !== "all"
+                ? perProfileStats.find((stat) => stat.profileKey === (service.profile as NonAllProfile))
+                : undefined;
+
+            return (
+              <div
+                key={serviceKey}
+                className={`transition-all ${isSelected ? "md:col-span-2" : ""}`}
+              >
+                <Card
+                  title={service.name}
+                  icon={<ServiceGlyph />}
+                  iconWrapperClassName={isSelected ? "text-emerald-200" : "text-emerald-300"}
+                  className={`${
+                    isSelected
+                      ? "border-emerald-400/70 bg-emerald-950/30 shadow-lg shadow-emerald-400/10 ring-1 ring-emerald-400/20"
+                      : "border-slate-800 bg-slate-900/70 hover:border-emerald-300/60 hover:bg-slate-900/80 cursor-pointer"
+                  } transition-all duration-200`}
+                  contentClassName="space-y-3 text-slate-200"
+                  onClick={() => toggleServiceExpanded(service.profile, service.name)}
+                >
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {isSelected && (
+                        <p className="text-sm leading-relaxed text-slate-200">{service.summary}</p>
+                      )}
+                      {service.profile === "all" ? (
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {perProfileStats.map(({ profileKey, running, total }) => (
+                            <span
+                              key={profileKey}
+                              className={`rounded-full px-3 py-1 border ${getStatusBadgeClass(running, total)}`}
+                            >
+                              {profileKey} {running}/{total}
+                            </span>
+                          ))}
+                          <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
+                            Total {statusCounts.running}/{totalInstances}
+                          </span>
+                        </div>
+                      ) : profileStat ? (
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
+                            {service.profile}
+                          </span>
+                          <span
+                            className={`rounded-full px-3 py-1 border ${getStatusBadgeClass(
+                              profileStat.running,
+                              profileStat.total
+                            )}`}
+                          >
+                            {profileStat.running}/{profileStat.total} running
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {isSelected && (
+                    <div
+                      className="mt-4 space-y-4 border-t border-slate-800 pt-4"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {service.profile !== "all" && (
+                            <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
+                              {service.profile}
+                            </span>
+                          )}
+                          <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
+                            Total {statusCounts.running}/{service.instances.length}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-emerald-200 hover:text-emerald-100 transition font-medium"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleServiceExpanded(service.profile, service.name);
+                          }}
                         >
-                          {profileKey} {running}/{total}
-                        </span>
-                      ))}
-                      <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
-                        Total {statusCounts.running}/{totalInstances}
-                      </span>
+                          Collapse
+                          <span aria-hidden>×</span>
+                        </button>
+                      </div>
+
+                      {(() => {
+                        const selection = selectedInstances[serviceKey] ?? [];
+                        const hasSelection = selection.length > 0;
+                        const selectedInstanceDetails = service.instances.filter((instance) =>
+                          selection.includes(instance.id)
+                        );
+
+                        const startableSelectedCount = selectedInstanceDetails.filter(
+                          (instance) => normaliseStatus(instance) === "degraded"
+                        ).length;
+
+                        const stoppableSelectedCount = selectedInstanceDetails.filter((instance) => {
+                          const status = normaliseStatus(instance);
+                          return status === "running" || status === "starting" || status === "restarting";
+                        }).length;
+
+                        const restartableSelectedCount = selectedInstanceDetails.filter(
+                          (instance) => normaliseStatus(instance) === "running"
+                        ).length;
+
+                        return hasSelection ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
+                                startableSelectedCount > 0 && !isActionInProgress
+                                  ? "border-emerald-400/50 text-emerald-200 hover:bg-emerald-400/10"
+                                  : "border-slate-700 text-slate-500 cursor-not-allowed"
+                              }`}
+                              disabled={startableSelectedCount === 0 || isActionInProgress}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleServiceSelectionAction(serviceKey, "start");
+                              }}
+                              title="Start degraded instances"
+                            >
+                              ▶ Start ({startableSelectedCount})
+                            </button>
+                            <button
+                              type="button"
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
+                                stoppableSelectedCount > 0 && !isActionInProgress
+                                  ? "border-rose-400/50 text-rose-200 hover:bg-rose-400/10"
+                                  : "border-slate-700 text-slate-500 cursor-not-allowed"
+                              }`}
+                              disabled={stoppableSelectedCount === 0 || isActionInProgress}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleServiceSelectionAction(serviceKey, "stop");
+                              }}
+                              title="Stop running/starting instances"
+                            >
+                              ■ Stop ({stoppableSelectedCount})
+                            </button>
+                            <button
+                              type="button"
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
+                                restartableSelectedCount > 0 && !isActionInProgress
+                                  ? "border-cyan-400/50 text-cyan-200 hover:bg-cyan-400/10"
+                                  : "border-slate-700 text-slate-500 cursor-not-allowed"
+                              }`}
+                              disabled={restartableSelectedCount === 0 || isActionInProgress}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleServiceSelectionAction(serviceKey, "restart");
+                              }}
+                              title="Restart running instances"
+                            >
+                              ⟳ Restart ({restartableSelectedCount})
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:bg-slate-800"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                clearSelection(serviceKey);
+                              }}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : null;
+                      })()}
+
+                      <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                        {service.instances.map((instance) => {
+                          const status = normaliseStatus(instance);
+                          const selection = selectedInstances[serviceKey] ?? [];
+                          const isInstanceSelected = selection.includes(instance.id);
+
+                          return (
+                            <div
+                              key={instance.id}
+                              className={`group rounded-lg border px-3 py-2 transition cursor-pointer ${
+                                isInstanceSelected
+                                  ? "border-emerald-400/70 bg-emerald-900/40 shadow-inner ring-1 ring-emerald-400/30"
+                                  : "border-slate-800 bg-slate-900/70 hover:border-emerald-300/40 hover:bg-slate-900/80"
+                              }`}
+                              role="checkbox"
+                              aria-checked={isInstanceSelected}
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleInstanceSelected(serviceKey, instance.id);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === " " || event.key === "Enter") {
+                                  event.preventDefault();
+                                  toggleInstanceSelected(serviceKey, instance.id);
+                                }
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
+                                      {instance.profile}
+                                    </span>
+                                    <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
+                                      v{instance.version}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="text-sm font-medium text-slate-100">
+                                      <span className="font-semibold">{instance.machineName}</span>
+                                      <span className="text-slate-500">:{instance.Port}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-5 w-5 items-center justify-center rounded transition hover:bg-slate-800"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        window.open(instance.metricsURL, "_blank");
+                                      }}
+                                      title="View Health Check"
+                                    >
+                                      <svg
+                                        className="h-4 w-4 text-emerald-400 hover:text-emerald-300"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                                <ServiceStatusBadge status={status} />
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
+                                <span className="truncate">Uptime {formatUptime(instance.uptime)}</span>
+                                <div className="flex flex-shrink-0 gap-2 text-xs font-semibold text-emerald-300">
+                                  <a
+                                    className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                    href={instance.logURL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(event) => event.stopPropagation()}
+                                    title="View Logs"
+                                  >
+                                    Logs ↗
+                                  </a>
+                                  <a
+                                    className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                    href={instance.metricsURL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(event) => event.stopPropagation()}
+                                    title="View Metrics"
+                                  >
+                                    Metrics ↗
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ) : profileStat ? (
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
-                        {service.profile}
-                      </span>
-                      <span
-                        className={`rounded-full px-3 py-1 border ${getStatusBadgeClass(
-                          profileStat.running,
-                          profileStat.total
-                        )}`}
-                      >
-                        {profileStat.running}/{profileStat.total} running
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
+                  )}
+                </Card>
               </div>
-            </Card>
-          );
-        })
-          ) : (
+            );
+          })
+        ) : (
+          <div className="md:col-span-2">
             <Card
               title="Services"
               icon={<ServiceGlyph />}
@@ -768,296 +988,18 @@ export function ServicesView({ selectedProject }: ServicesViewProps): JSX.Elemen
                 <div className="mb-4 rounded-full bg-slate-800/50 p-6">
                   <ServiceGlyph />
                 </div>
-                <h3 className="text-lg font-semibold text-slate-300 mb-2">
+                <h3 className="mb-2 text-lg font-semibold text-slate-300">
                   No Profile Selected
                 </h3>
-                <p className="text-sm text-slate-400 max-w-md">
+                <p className="max-w-md text-sm text-slate-400">
                   Select any profile summary card to view services.
                 </p>
               </div>
             </Card>
-          )}
-        </div>
-        
-        {/* Right Side - Instance Details (Sticky) */}
-        <div className="lg:sticky lg:top-6 lg:self-start space-y-6 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900 lg:pr-1">
-          {selectedService ? (
-            <Card
-              title={`${selectedService.name} - Instance Details`}
-              icon={<ServiceGlyph />}
-              iconWrapperClassName="text-emerald-200"
-              className="border-emerald-400/70 bg-emerald-950/30 shadow-lg shadow-emerald-400/10"
-              contentClassName="space-y-4 text-slate-200"
-              topRightAction={
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-emerald-200 hover:text-emerald-100 transition font-medium"
-                  onClick={() => setSelectedServiceKey(null)}
-                >
-                  Close
-                  <span aria-hidden>×</span>
-                </button>
-              }
-            >
-              <div className="flex flex-wrap items-center gap-2 text-xs mb-4">
-                {selectedService.profile !== "all" && (
-                  <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
-                    {selectedService.profile}
-                  </span>
-                )}
-                <span className="rounded-full border border-slate-700 px-3 py-1 text-slate-200">
-                  Total {getStatusCounts(selectedService.instances).running}/{selectedService.instances.length}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-                  Instances ({selectedService.instances.length})
-                </h4>
-                {(() => {
-                      const selection = selectedInstances[selectedServiceKey!] ?? [];
-                      const hasSelection = selection.length > 0;
-                      const selectedInstanceDetails = selectedService.instances.filter(instance => selection.includes(instance.id));
-                      
-                      // Start button: Only for Degraded instances
-                      const startableSelectedCount = selectedInstanceDetails.filter(instance => 
-                        normaliseStatus(instance) === "degraded"
-                      ).length;
-                      
-                      // Stop button: For Running OR Starting OR Restarting instances
-                      const stoppableSelectedCount = selectedInstanceDetails.filter(instance => {
-                        const status = normaliseStatus(instance);
-                        return status === "running" || status === "starting" || status === "restarting";
-                      }).length;
-                      
-                      // Restart button: Only for Running instances
-                      const restartableSelectedCount = selectedInstanceDetails.filter(instance => 
-                        normaliseStatus(instance) === "running"
-                      ).length;
-                      
-                      return hasSelection ? (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
-                              startableSelectedCount > 0 && !isActionInProgress
-                                ? "border-emerald-400/50 text-emerald-200 hover:bg-emerald-400/10"
-                                : "border-slate-700 text-slate-500 cursor-not-allowed"
-                            }`}
-                            disabled={startableSelectedCount === 0 || isActionInProgress}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleServiceSelectionAction(selectedServiceKey!, "start");
-                            }}
-                            title="Start degraded instances"
-                          >
-                            ▶ Start ({startableSelectedCount})
-                          </button>
-                          <button
-                            type="button"
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
-                              stoppableSelectedCount > 0 && !isActionInProgress
-                                ? "border-rose-400/50 text-rose-200 hover:bg-rose-400/10"
-                                : "border-slate-700 text-slate-500 cursor-not-allowed"
-                            }`}
-                            disabled={stoppableSelectedCount === 0 || isActionInProgress}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleServiceSelectionAction(selectedServiceKey!, "stop");
-                            }}
-                            title="Stop running/starting instances"
-                          >
-                            ■ Stop ({stoppableSelectedCount})
-                          </button>
-                          <button
-                            type="button"
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium transition ${
-                              restartableSelectedCount > 0 && !isActionInProgress
-                                ? "border-cyan-400/50 text-cyan-200 hover:bg-cyan-400/10"
-                                : "border-slate-700 text-slate-500 cursor-not-allowed"
-                            }`}
-                            disabled={restartableSelectedCount === 0 || isActionInProgress}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleServiceSelectionAction(selectedServiceKey!, "restart");
-                            }}
-                            title="Restart running instances"
-                          >
-                            ⟳ Restart ({restartableSelectedCount})
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:bg-slate-800"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              clearSelection(selectedServiceKey!);
-                            }}
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-                  
-                  <div className="space-y-4">
-                    {(() => {
-                      // Group instances by profile
-                      const instancesByProfile = new Map<string, ServicesInstance[]>();
-                      selectedService.instances.forEach((instance) => {
-                        const profile = instance.profile;
-                        if (!instancesByProfile.has(profile)) {
-                          instancesByProfile.set(profile, []);
-                        }
-                        instancesByProfile.get(profile)!.push(instance);
-                      });
-                      
-                      // Sort profiles: "all" first, then alphabetically
-                      const sortedProfiles = Array.from(instancesByProfile.keys()).sort((a, b) => {
-                        if (a === "all") return -1;
-                        if (b === "all") return 1;
-                        return a.localeCompare(b);
-                      });
-                      
-                      return sortedProfiles.map((profile) => {
-                        const instances = instancesByProfile.get(profile)!;
-                        const profileStats = getStatusCounts(instances);
-                        
-                        return (
-                          <div key={profile} className="rounded-xl border border-slate-700 bg-slate-900/40 p-4">
-                            {/* Profile Header */}
-                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
-                              <div className="flex items-center gap-2">
-                                <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-emerald-200 text-xs font-medium">
-                                  {profile}
-                                </span>
-                                <span className="text-xs text-slate-400">
-                                  {instances.length} {instances.length === 1 ? 'instance' : 'instances'}
-                                </span>
-                              </div>
-                              <span className="text-xs text-slate-400">
-                                Running {profileStats.running}/{instances.length}
-                              </span>
-                            </div>
-                            
-                            {/* Instances in this profile */}
-                            <div className="space-y-2">
-                              {instances.map((instance) => {
-                                const status = normaliseStatus(instance);
-                                const selection = selectedInstances[selectedServiceKey!] ?? [];
-                                const isInstanceSelected = selection.includes(instance.id);
-                                
-                                return (
-                                  <div
-                                    key={instance.id}
-                                    className={`group rounded-lg border bg-slate-900/60 px-3 py-2 transition cursor-pointer ${
-                                      isInstanceSelected
-                                        ? "border-emerald-400/60 ring-1 ring-emerald-400/30"
-                                        : "border-slate-800 hover:border-emerald-300/40"
-                                    }`}
-                                    role="checkbox"
-                                    aria-checked={isInstanceSelected}
-                                    tabIndex={0}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      toggleInstanceSelected(selectedServiceKey!, instance.id);
-                                    }}
-                                    onKeyDown={(event) => {
-                                      if (event.key === " " || event.key === "Enter") {
-                                        event.preventDefault();
-                                        toggleInstanceSelected(selectedServiceKey!, instance.id);
-                                      }
-                                    }}
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="space-y-1 flex-1 min-w-0">
-                                        <div className="flex items-center gap-1.5 text-xs">
-                                          <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
-                                            v{instance.version}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <div className="text-sm font-medium text-slate-100">
-                                            <span className="font-semibold">{instance.machineName}</span>
-                                            <span className="text-slate-500">:{instance.Port}</span>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            className="inline-flex items-center justify-center w-5 h-5 rounded transition hover:bg-slate-800"
-                                            onClick={(event) => {
-                                              event.stopPropagation();
-                                              // Health check action - could open modal or navigate
-                                              window.open(instance.metricsURL, '_blank');
-                                            }}
-                                            title="View Health Check"
-                                          >
-                                            <svg className="w-4 h-4 text-emerald-400 hover:text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <ServiceStatusBadge status={status} />
-                                    </div>
-                                    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
-                                      <span className="truncate">Uptime {formatUptime(instance.uptime)}</span>
-                                      <div className="flex gap-2 text-xs font-semibold text-emerald-300 flex-shrink-0">
-                                        <a
-                                          className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
-                                          href={instance.logURL}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          onClick={(event) => event.stopPropagation()}
-                                          title="View Logs"
-                                        >
-                                          Logs ↗
-                                        </a>
-                                        <a
-                                          className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
-                                          href={instance.metricsURL}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          onClick={(event) => event.stopPropagation()}
-                                          title="View Metrics"
-                                        >
-                                          Metrics ↗
-                                        </a>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-            </Card>
-          ) : (
-            <Card
-              title="Instance Details"
-              icon={<ServiceGlyph />}
-              iconWrapperClassName="text-slate-400"
-              className="border-slate-700 bg-slate-900/50"
-              contentClassName="space-y-6 text-slate-200"
-            >
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="mb-4 rounded-full bg-slate-800/50 p-6">
-                  <ServiceGlyph />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-300 mb-2">
-                  No Service Selected
-                </h3>
-                <p className="text-sm text-slate-400 max-w-md">
-                  Select any service to view instances.
-                </p>
-              </div>
-            </Card>
-          )}
           </div>
+        )}
       </div>
-      
+
       <ActionConfirmationModal
         key={`modal-${modalState.isOpen}-${modalState.action}-${modalState.instances.length}`}
         isOpen={modalState.isOpen}
