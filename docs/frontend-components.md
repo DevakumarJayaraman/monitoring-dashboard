@@ -1,5 +1,9 @@
 # Frontend Component Technical Documentation
 
+# React Frontend Component Technical Documentation
+
+## Overview
+
 This document covers every React component and TSX-based module that ships with the monitoring dashboard frontend. For each entry you will find its responsibilities, the data or utilities it depends on, and notable implementation details that are helpful when extending or integrating with the component.
 
 ## Entry & Context
