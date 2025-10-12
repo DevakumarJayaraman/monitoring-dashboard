@@ -1,12 +1,13 @@
 import type { JSX } from "react";
 import { useState, useEffect, type MouseEvent } from "react";
 import type { Project } from "../../types/project.ts";
-import { fetchAllProjects, type ApiProject } from "../../services/api.ts";
+import { fetchAllProjects, retireProject, type ApiProject } from "../../services/api.ts";
 import { Header } from "../layout/Header.tsx";
 import { Footer } from "../layout/Footer.tsx";
 import { useTheme } from "../../context/ThemeContext.tsx";
 import { ProjectFormModal } from "./ProjectFormModal.tsx";
 import { Toast } from "../shared/Toast.tsx";
+import { Tooltip } from "../shared/Tooltip.tsx";
 
 interface ProjectSelectionProps {
   onProjectSelect: (project: Project) => void;
@@ -27,6 +28,7 @@ export function ProjectSelection({ onProjectSelect }: ProjectSelectionProps): JS
   const [selectedProjectForEdit, setSelectedProjectForEdit] = useState<Project | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [toast, setToast] = useState<ToastState>({ message: '', type: 'success', isVisible: false });
+  const [retireConfirmation, setRetireConfirmation] = useState<string | null>(null);
 
   // Theme-aware class builders
   const getCardGradient = () => {
@@ -90,10 +92,38 @@ export function ProjectSelection({ onProjectSelect }: ProjectSelectionProps): JS
     setIsAddProjectModalOpen(true);
   };
 
-  const handleProjectSuccess = () => {
-    setIsAddProjectModalOpen(false);
-    setSelectedProjectForEdit(null);
-    setRefreshTrigger(prev => prev + 1);
+  const handleRetireProject = async (project: Project, e: MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering project selection
+
+    // Check if project has any environment mappings
+    const hasEnvironments = Object.keys(project.infrastructureByEnv).length > 0;
+
+    if (hasEnvironments) {
+      showToast('Cannot retire project. Please remove all environment mappings first.', 'error');
+      return;
+    }
+
+    // Show confirmation
+    setRetireConfirmation(project.id);
+  };
+
+  const confirmRetireProject = async (projectId: string) => {
+    try {
+      await retireProject(Number(projectId));
+      showToast('Project retired successfully!', 'success');
+      setRetireConfirmation(null);
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Failed to retire project:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to retire project';
+      showToast(errorMessage, 'error');
+      setRetireConfirmation(null);
+    }
+  };
+
+  const cancelRetireProject = (e: MouseEvent) => {
+    e.stopPropagation();
+    setRetireConfirmation(null);
   };
 
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -224,7 +254,7 @@ export function ProjectSelection({ onProjectSelect }: ProjectSelectionProps): JS
               <div
                 key={project.id}
                 onClick={() => onProjectSelect(project)}
-                className={`group relative cursor-pointer overflow-hidden rounded-xl border p-6 transition-all duration-300 hover:scale-[1.02] hover:border-emerald-500/50 ${getCardGradient()} ${getCardShadow()}`}
+                className={`group relative cursor-pointer rounded-xl border p-6 transition-all duration-300 hover:scale-[1.02] hover:border-emerald-500/50 ${getCardGradient()} ${getCardShadow()}`}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -251,25 +281,84 @@ export function ProjectSelection({ onProjectSelect }: ProjectSelectionProps): JS
                     </div>
                     <div className="flex items-center gap-2">
                       {/* Edit Button */}
-                      <button
-                        onClick={(e) => handleEditProject(project, e)}
-                        className="flex-shrink-0 rounded-lg bg-slate-700/30 p-2 transition-colors hover:bg-blue-500/20"
-                        title="Edit project"
-                      >
-                        <svg
-                          className="h-5 w-5 text-slate-500 transition-colors hover:text-blue-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                      <Tooltip content={`Edit ${project.name}`} position="top">
+                        <button
+                          onClick={(e) => handleEditProject(project, e)}
+                          className="flex-shrink-0 rounded-lg bg-slate-700/30 p-2 transition-colors hover:bg-blue-500/20"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
-                      </button>
+                          <svg
+                            className="h-5 w-5 text-slate-500 transition-colors hover:text-blue-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            />
+                          </svg>
+                        </button>
+                      </Tooltip>
+                      {/* Retire Button - Only enabled if no environments */}
+                      {retireConfirmation === project.id ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <Tooltip content={`Confirm retire ${project.name}`} position="top">
+                            <button
+                              onClick={() => confirmRetireProject(project.id)}
+                              className="flex-shrink-0 rounded-lg bg-orange-500/20 px-2 py-1 text-xs font-medium text-orange-400 transition-colors hover:bg-orange-500/30"
+                            >
+                              Confirm
+                            </button>
+                          </Tooltip>
+                          <Tooltip content="Cancel" position="top">
+                            <button
+                              onClick={cancelRetireProject}
+                              className="flex-shrink-0 rounded-lg bg-slate-700/30 px-2 py-1 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-600/30"
+                            >
+                              Cancel
+                            </button>
+                          </Tooltip>
+                        </div>
+                      ) : (
+                        <Tooltip
+                          content={
+                            Object.keys(project.infrastructureByEnv).length > 0
+                              ? `Cannot retire ${project.name} - project has environment mappings`
+                              : `Retire ${project.name}`
+                          }
+                          position="top"
+                        >
+                          <button
+                            onClick={(e) => handleRetireProject(project, e)}
+                            disabled={Object.keys(project.infrastructureByEnv).length > 0}
+                            className={`flex-shrink-0 rounded-lg p-2 transition-colors ${
+                              Object.keys(project.infrastructureByEnv).length > 0
+                                ? 'bg-slate-700/20 cursor-not-allowed opacity-40'
+                                : 'bg-slate-700/30 hover:bg-orange-500/20'
+                            }`}
+                          >
+                            <svg
+                              className={`h-5 w-5 transition-colors ${
+                                Object.keys(project.infrastructureByEnv).length > 0
+                                  ? 'text-slate-600'
+                                  : 'text-slate-500 hover:text-orange-400'
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                              />
+                            </svg>
+                          </button>
+                        </Tooltip>
+                      )}
                       {/* Arrow */}
                       <div className="flex-shrink-0 rounded-lg bg-slate-700/30 p-2 transition-colors group-hover:bg-emerald-500/10">
                         <svg
@@ -383,8 +472,8 @@ export function ProjectSelection({ onProjectSelect }: ProjectSelectionProps): JS
         onClose={() => {
           setIsAddProjectModalOpen(false);
           setSelectedProjectForEdit(null);
+          setRefreshTrigger(prev => prev + 1);
         }}
-        onSuccess={handleProjectSuccess}
         onShowToast={showToast}
       />
 

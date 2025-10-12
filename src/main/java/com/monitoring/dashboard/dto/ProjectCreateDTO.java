@@ -25,6 +25,7 @@ public class ProjectCreateDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ProjectEnvironmentMappingDTO {
+        private Long perId; // Include for updates to existing mappings
         private Integer environmentId;
         private Integer regionId;
         private List<String> profileCodes = new ArrayList<>(); // e.g., ["apacqa", "emeaqa"]

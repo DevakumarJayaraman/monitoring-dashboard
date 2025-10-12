@@ -34,6 +34,8 @@ public interface InfrastructureRepository extends JpaRepository<Infrastructure, 
 
     List<Infrastructure> findByProjectEnvironmentMapping_Project_ProjectId(Long projectId);
 
+    List<Infrastructure> findByProjectEnvironmentMapping_PerId(Long perId);
+
     boolean existsByHostname(String hostname);
 
     Optional<Infrastructure> findByInfraName(String infraName);

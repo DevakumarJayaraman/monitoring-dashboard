@@ -699,6 +699,7 @@ export interface RegionDTO {
 }
 
 export interface ProjectEnvironmentMappingDTO {
+  perId?: number; // Optional: for updates to existing mappings
   environmentId: number;
   regionId: number;
   profileCodes: string[];
@@ -726,7 +727,7 @@ export async function createProject(data: ProjectCreateDTO): Promise<ApiProject>
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Failed to create project: ${response.status}`);
+      throw new Error(errorData.error || errorData.message || `Failed to create project: ${response.status}`);
     }
     
     return await response.json();
@@ -751,7 +752,7 @@ export async function updateProject(id: number, data: ProjectCreateDTO): Promise
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Failed to update project: ${response.status}`);
+      throw new Error(errorData.error || errorData.message || `Failed to update project: ${response.status}`);
     }
     
     return await response.json();
@@ -765,16 +766,34 @@ export async function updateProject(id: number, data: ProjectCreateDTO): Promise
  * Delete a project
  */
 export async function deleteProject(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete project: ${response.status}`);
+  }
+}
+
+/**
+ * Retire a project (set active_flag to false)
+ * Only allowed if project has no environment mappings
+ */
+export async function retireProject(id: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
-      method: 'DELETE',
+    const response = await fetch(`${API_BASE_URL}/projects/${id}/retire`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
-    
+
     if (!response.ok) {
-      throw new Error(`Failed to delete project: ${response.status}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || `Failed to retire project: ${response.status}`);
     }
   } catch (error) {
-    console.error('Error deleting project:', error);
+    console.error('Error retiring project:', error);
     throw error;
   }
 }
@@ -811,6 +830,83 @@ export async function fetchProjectRegions(): Promise<RegionDTO[]> {
     return await response.json();
   } catch (error) {
     console.error('Error fetching regions:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch environment mappings for a specific project (for edit mode)
+ */
+export interface ProjectEnvironmentMappingDetailDTO {
+  perId: number;
+  environmentId: number;
+  envCode: string;
+  envDesc: string;
+  regionId: number;
+  regionCode: string;
+  regionDesc: string;
+  profileCodes: string[];
+  activeFlag: boolean;
+}
+
+export async function fetchProjectMappings(projectId: number): Promise<ProjectEnvironmentMappingDetailDTO[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/mappings`);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch project mappings: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching project mappings:', error);
+    throw error;
+  }
+}
+
+/**
+ * Save a single environment/region mapping for a project
+ */
+export async function saveProjectMapping(
+  projectId: number,
+  mapping: ProjectEnvironmentMappingDTO
+): Promise<ProjectEnvironmentMappingDetailDTO> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/mappings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(mapping),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || `Failed to save mapping: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error saving project mapping:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a single environment/region mapping
+ */
+export async function deleteProjectMapping(projectId: number, perId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/mappings/${perId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || `Failed to delete mapping: ${response.status}`);
+    }
+  } catch (error) {
+    console.error('Error deleting project mapping:', error);
     throw error;
   }
 }

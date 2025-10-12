@@ -48,7 +48,7 @@ public class ProjectEnvironmentMapping {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @OneToMany(mappedBy = "projectEnvironmentMapping", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "projectEnvironmentMapping", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JsonManagedReference
     private List<ProjectProfiles> profiles = new ArrayList<>();
 
