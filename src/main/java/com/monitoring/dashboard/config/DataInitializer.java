@@ -2,6 +2,7 @@ package com.monitoring.dashboard.config;
 
 import com.monitoring.dashboard.model.*;
 import com.monitoring.dashboard.repository.*;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -21,7 +22,7 @@ public class DataInitializer implements CommandLineRunner {
     private final ProjectRepository projectRepository;
     private final RoleFunctionAccessRepository accessRepository;
     private final ComponentRepository componentRepository;
-    private final ComponentDeploymentRepository componentDeploymentRepository;
+    private final DeploymentConfigRepository deploymentConfigRepository;
     private final ServiceInstanceRepository serviceInstanceRepository;
     private final EnvironmentRepository environmentRepository;
     private final RegionRepository regionRepository;
@@ -33,6 +34,7 @@ public class DataInitializer implements CommandLineRunner {
     private record ProfileSeed(String envCode, String regionCode, String profileCode, String profileDescription) {}
 
     @Override
+    @Transactional
     public void run(String... args) {
         log.info("Initializing sample data...");
         initializeData();
@@ -42,7 +44,7 @@ public class DataInitializer implements CommandLineRunner {
     private void initializeData() {
         // Clear all existing data
         serviceInstanceRepository.deleteAll();
-        componentDeploymentRepository.deleteAll();
+        deploymentConfigRepository.deleteAll();
         componentRepository.deleteAll();
         infraMetricsRepository.deleteAll();
         infrastructureRepository.deleteAll();
@@ -60,37 +62,47 @@ public class DataInitializer implements CommandLineRunner {
         Map<String, Environment> environmentMap = seedEnvironments();
         Map<String, Region> regionMap = seedRegions();
         List<ProfileSeed> profileSeeds = buildProfileSeeds();
+        List<ProfileSeed> khayyamProfileSeeds = buildKhayyamProfileSeeds();
 
         log.info("Created {} environments and {} regions", environmentMap.size(), regionMap.size());
 
         // --- Create Projects ---
-        Project tradeProject = createProject(
-                "Trade Management",
-                "Trade operations, settlement, and execution management",
+        Project eventHorizonProject = createProject(
+                "Event Horizon",
+                "Real-time event streaming and processing platform",
                 environmentMap,
                 regionMap,
                 profileSeeds);
 
-        Project kycProject = createProject(
-                "KYC",
-                "Know Your Customer compliance and verification",
+        Project khayyamProject = createProject(
+                "Khayyam",
+                "Advanced spot pricing and market data analytics",
                 environmentMap,
                 regionMap,
-                profileSeeds);
+                khayyamProfileSeeds);
 
-        log.info("Created projects: {} and {}", tradeProject.getProjectName(), kycProject.getProjectName());
+        log.info("Created projects: {} and {}",
+                eventHorizonProject.getProjectName(), khayyamProject.getProjectName());
 
-        // --- Create Components for both projects FIRST ---
-        Map<String, Component> tradeComponentsMap = loadComponents(tradeProject, "Trade");
-        Map<String, Component> kycComponentsMap = loadComponents(kycProject, "KYC");
+        // --- Create Components for all projects FIRST ---
+        Map<String, Component> eventHorizonComponentsMap = loadComponents(eventHorizonProject, "EventHorizon");
+        Map<String, Component> khayyamComponentsMap = loadComponents(khayyamProject, "Khayyam");
 
-        // --- Create Infrastructure for both projects ---
-        Map<String, Infrastructure> tradeInfraMap = loadInfrastructure(tradeProject);
-        Map<String, Infrastructure> kycInfraMap = loadInfrastructure(kycProject);
+        // --- Create Infrastructure for all projects ---
+        Map<String, Infrastructure> eventHorizonInfraMap = loadInfrastructure(eventHorizonProject);
+        Map<String, Infrastructure> khayyamInfraMap = loadInfrastructure(khayyamProject);
 
-        // --- Generate Services with Component mapping ---
-        generateTradeManagementServices(tradeProject, tradeInfraMap, tradeComponentsMap);
-        generateKYCServices(kycProject, kycInfraMap, kycComponentsMap);
+        if (shouldSeedOpsData()) {
+            // --- Create Deployment Configs for all components and infrastructure ---
+            createDeploymentConfigs(eventHorizonComponentsMap, eventHorizonInfraMap);
+            createDeploymentConfigs(khayyamComponentsMap, khayyamInfraMap);
+
+            // --- Generate Services with Component mapping ---
+            generateEventHorizonServices(eventHorizonProject, eventHorizonInfraMap, eventHorizonComponentsMap);
+            generateKhayyamServices(khayyamProject, khayyamInfraMap, khayyamComponentsMap);
+        } else {
+            log.info("Skipping seeding of ops_deployment_config and ops_service_instances tables (set SEED_OPS_DATA=true to enable).");
+        }
 
         // Access control setup
         accessRepository.save(new RoleFunctionAccess("default", "VIEW_ALL", "STAGING", "Y"));
@@ -106,7 +118,13 @@ public class DataInitializer implements CommandLineRunner {
 
         log.info("Created {} infrastructure instances", infrastructureRepository.count());
         log.info("Created {} components", componentRepository.count());
+        log.info("Created {} deployment configs", deploymentConfigRepository.count());
         log.info("Created {} service instances", serviceInstanceRepository.count());
+    }
+
+    private boolean shouldSeedOpsData() {
+        return Boolean.parseBoolean(Optional.ofNullable(System.getenv("SEED_OPS_DATA"))
+                .orElseGet(() -> System.getProperty("seed.ops.data", "false")));
     }
 
     private Map<String, Environment> seedEnvironments() {
@@ -159,6 +177,35 @@ public class DataInitializer implements CommandLineRunner {
         seeds.add(new ProfileSeed("COB", "APAC", "apaccob", "APAC Disaster Recovery"));
         seeds.add(new ProfileSeed("COB", "EMEA", "emeacob", "EMEA Disaster Recovery"));
         seeds.add(new ProfileSeed("COB", "NAM", "namcob", "NAM Disaster Recovery"));
+
+        return seeds;
+    }
+
+    private List<ProfileSeed> buildKhayyamProfileSeeds() {
+        List<ProfileSeed> seeds = new ArrayList<>();
+
+        // DEV (Global)
+        seeds.add(new ProfileSeed("DEV", "GLOBAL", "dev", "Development environment"));
+
+        // STAGING profiles with new format: region-uat1, region-uat2
+        seeds.add(new ProfileSeed("STAGING", "APAC", "apac-uat1", "APAC STAGING UAT1"));
+        seeds.add(new ProfileSeed("STAGING", "APAC", "apac-uat2", "APAC STAGING UAT2"));
+
+        seeds.add(new ProfileSeed("STAGING", "EMEA", "emea-uat1", "EMEA STAGING UAT1"));
+        seeds.add(new ProfileSeed("STAGING", "EMEA", "emea-uat2", "EMEA STAGING UAT2"));
+
+        seeds.add(new ProfileSeed("STAGING", "NAM", "nam-uat1", "NAM STAGING UAT1"));
+        seeds.add(new ProfileSeed("STAGING", "NAM", "nam-uat2", "NAM STAGING UAT2"));
+
+        // PROD profiles with new format: region-prod
+        seeds.add(new ProfileSeed("PROD", "APAC", "apac-prod", "APAC Production"));
+        seeds.add(new ProfileSeed("PROD", "EMEA", "emea-prod", "EMEA Production"));
+        seeds.add(new ProfileSeed("PROD", "NAM", "nam-prod", "NAM Production"));
+
+        // COB profiles with new format: region-cob
+        seeds.add(new ProfileSeed("COB", "APAC", "apac-cob", "APAC Disaster Recovery"));
+        seeds.add(new ProfileSeed("COB", "EMEA", "emea-cob", "EMEA Disaster Recovery"));
+        seeds.add(new ProfileSeed("COB", "NAM", "nam-cob", "NAM Disaster Recovery"));
 
         return seeds;
     }
@@ -358,71 +405,139 @@ public class DataInitializer implements CommandLineRunner {
         infraMetricsRepository.save(metric);
     }
 
-    private void generateTradeManagementServices(Project project, Map<String, Infrastructure> infraMap, Map<String, Component> componentsMap) {
+    /**
+     * Create deployment configs for all components on all infrastructure
+     * Creates ONE config per component per profile, selecting random infrastructure
+     */
+    private void createDeploymentConfigs(Map<String, Component> componentsMap, Map<String, Infrastructure> infraMap) {
+        int configCount = 0;
+
+        // Group infrastructure by profile and type
+        Map<String, Map<String, List<Infrastructure>>> infraByProfileAndType = new HashMap<>();
+
+        for (Infrastructure infra : infraMap.values()) {
+            String profile = extractProfileFromInfraName(infra.getInfraName());
+            if (profile == null || profile.isEmpty()) {
+                continue;
+            }
+
+            infraByProfileAndType
+                .computeIfAbsent(profile, k -> new HashMap<>())
+                .computeIfAbsent(infra.getInfraType(), k -> new ArrayList<>())
+                .add(infra);
+        }
+
+        // For each component
+        for (Component component : componentsMap.values()) {
+            // Determine preferred infrastructure type for this component
+            // 70% linux, 20% ecs, 10% windows (can be customized per component)
+            String preferredInfraType = determinePreferredInfraType();
+
+            // For each profile
+            for (Map.Entry<String, Map<String, List<Infrastructure>>> profileEntry : infraByProfileAndType.entrySet()) {
+                String profile = profileEntry.getKey();
+                Map<String, List<Infrastructure>> infraByType = profileEntry.getValue();
+
+                // Try to get infrastructure of preferred type, fallback to any available
+                Infrastructure selectedInfra = selectInfrastructure(infraByType, preferredInfraType);
+
+                if (selectedInfra == null) {
+                    log.warn("No infrastructure found for profile {} and component {}", profile, component.getComponentName());
+                    continue;
+                }
+
+                // Create deployment config
+                DeploymentConfig config = new DeploymentConfig();
+                config.setComponent(component);
+                config.setInfrastructure(selectedInfra);
+                // Profile is no longer set on DeploymentConfig; resolve via infra/project mapping if needed
+                config.setEnabled(true);
+
+                // Set base port (8000 + random offset)
+                config.setBasePort(8000 + random.nextInt(100));
+
+                // Create deployment parameters based on infrastructure type
+                try {
+                    byte[] deployParams = createDeploymentParams(selectedInfra.getInfraType());
+                    config.setDeployParams(deployParams);
+                } catch (Exception e) {
+                    log.error("Error creating deployment params for component {} on infra {}",
+                             component.getComponentName(), selectedInfra.getInfraName(), e);
+                    continue;
+                }
+
+                deploymentConfigRepository.save(config);
+                configCount++;
+            }
+        }
+
+        log.info("Created {} deployment configs (1 per component per profile)", configCount);
+    }
+
+    /**
+     * Determine preferred infrastructure type for a component
+     * Can be enhanced to make decisions based on component type/name
+     */
+    private String determinePreferredInfraType() {
+        double rand = random.nextDouble();
+        if (rand < 0.70) {
+            return "linux";
+        } else if (rand < 0.90) {
+            return "ecs";
+        } else {
+            return "windows";
+        }
+    }
+
+    /**
+     * Select a random infrastructure from available types, preferring the specified type
+     */
+    private Infrastructure selectInfrastructure(Map<String, List<Infrastructure>> infraByType, String preferredType) {
+        // Try preferred type first
+        if (infraByType.containsKey(preferredType)) {
+            List<Infrastructure> infraList = infraByType.get(preferredType);
+            if (!infraList.isEmpty()) {
+                return infraList.get(random.nextInt(infraList.size()));
+            }
+        }
+
+        // Fallback to any available type
+        for (List<Infrastructure> infraList : infraByType.values()) {
+            if (!infraList.isEmpty()) {
+                return infraList.get(random.nextInt(infraList.size()));
+            }
+        }
+
+        return null;
+    }
+
+    private void generateEventHorizonServices(Project project, Map<String, Infrastructure> infraMap, Map<String, Component> componentsMap) {
         List<String> serviceNames = Arrays.asList(
-            // Core Trading Services (15)
-            "trade-execution-service", "order-management-service", "trade-matching-engine",
-            "position-management-service", "trade-validation-service", "trade-booking-service",
-            "price-discovery-service", "market-data-service", "order-routing-service",
-            "trade-confirmation-service", "trade-enrichment-service", "trade-lifecycle-service",
-            "pre-trade-compliance-service", "post-trade-processing-service", "trade-allocation-service",
+            // Event Streaming (10)
+            "event-ingestion-service", "stream-processing-service", "real-time-analytics-service",
+            "event-storage-service", "notification-delivery-service", "audit-log-ingestion-service",
+            "metrics-collection-service", "api-gateway-service", "reporting-service",
+            "analytics-dashboard-service",
 
-            // Settlement & Clearing (10)
-            "settlement-service", "clearing-service", "cash-management-service",
-            "collateral-management-service", "margin-calculation-service", "reconciliation-service",
-            "settlement-instruction-service", "payment-gateway-service", "corporate-actions-service",
-            "dividend-processing-service",
-
-            // Risk & Compliance (10)
-            "risk-analytics-service", "credit-risk-service", "market-risk-service",
-            "operational-risk-service", "regulatory-reporting-service", "trade-surveillance-service",
-            "fraud-detection-service", "aml-screening-service", "sanctions-screening-service",
-            "risk-limit-monitoring-service",
-
-            // Reference Data & Master Data (8)
-            "reference-data-service", "instrument-master-service", "counterparty-master-service",
-            "static-data-service", "security-master-service", "entity-master-service",
-            "hierarchy-management-service", "data-quality-service",
-
-            // Support & Integration (7)
-            "audit-trail-service", "notification-service", "reporting-service",
-            "api-gateway-service", "file-transfer-service", "event-streaming-service",
-            "analytics-dashboard-service"
+            // Support & Integration (5)
+            "schema-registry-service", "kafka-manager-service", "connector-management-service",
+            "api-gateway-service", "notification-service"
         );
 
         generateServicesForProject(project, infraMap, serviceNames, componentsMap);
     }
 
-    private void generateKYCServices(Project project, Map<String, Infrastructure> infraMap, Map<String, Component> componentsMap) {
+    private void generateKhayyamServices(Project project, Map<String, Infrastructure> infraMap, Map<String, Component> componentsMap) {
         List<String> serviceNames = Arrays.asList(
-            // Customer Onboarding (12)
-            "customer-onboarding-service", "identity-verification-service", "document-verification-service",
-            "biometric-verification-service", "digital-signature-service", "e-signature-service",
-            "customer-screening-service", "customer-due-diligence-service", "enhanced-due-diligence-service",
-            "customer-risk-rating-service", "customer-profile-service", "customer-consent-service",
+            // Spot Pricing (10)
+            "spot-pricing-service", "market-data-ingestion-service", "historical-data-service",
+            "pricing-strategy-service", "risk-assessment-service", "order-execution-service",
+            "notification-service", "reporting-service", "analytics-dashboard-service",
+            "api-gateway-service",
 
-            // Document Management (8)
-            "document-upload-service", "document-processing-service", "document-extraction-service",
-            "document-classification-service", "document-storage-service", "document-retention-service",
-            "document-archival-service", "document-retrieval-service",
-
-            // Verification & Validation (10)
-            "address-verification-service", "employment-verification-service", "income-verification-service",
-            "bank-account-verification-service", "credit-check-service", "background-check-service",
-            "sanctions-check-service", "pep-screening-service", "adverse-media-screening-service",
-            "watchlist-screening-service",
-
-            // Compliance & Regulatory (10)
-            "aml-compliance-service", "kyc-refresh-service", "periodic-review-service",
-            "regulatory-reporting-service", "suspicious-activity-reporting-service", "transaction-monitoring-service",
-            "case-management-service", "alert-management-service", "investigation-service",
-            "compliance-dashboard-service",
-
-            // Integration & Support (10)
-            "third-party-verification-service", "credit-bureau-integration-service", "government-id-verification-service",
-            "api-gateway-service", "notification-service", "audit-log-service",
-            "workflow-engine-service", "rule-engine-service", "reporting-service",
-            "analytics-service"
+            // Support & Integration (5)
+            "data-validation-service", "schema-registry-service", "api-gateway-service",
+            "notification-service", "audit-log-service"
         );
 
         generateServicesForProject(project, infraMap, serviceNames, componentsMap);
@@ -867,8 +982,35 @@ public class DataInitializer implements CommandLineRunner {
     private void createServiceInstance(String instanceId, String serviceName, String machineName,
                                        String infraType, String profile, Integer port,
                                        String version, Integer uptimeSeconds, String status, Component component) {
+        // Find the infrastructure for this machine
+        Infrastructure infrastructure = infrastructureRepository.findAll().stream()
+                .filter(infra -> infra.getInfraName().equals(machineName))
+                .findFirst()
+                .orElse(null);
+
+        if (infrastructure == null || component == null) {
+            log.warn("Skipping service instance {} - missing infrastructure or component", instanceId);
+            return;
+        }
+
+        // Find or create deployment config for this component + infrastructure
+        DeploymentConfig deploymentConfig = deploymentConfigRepository.findAll().stream()
+                .filter(dc -> dc.getComponent().equals(component)
+                        && dc.getInfrastructure().equals(infrastructure))
+                .findFirst()
+                .orElseGet(() -> {
+                    // Create a new deployment config
+                    DeploymentConfig newConfig = new DeploymentConfig();
+                    newConfig.setComponent(component);
+                    newConfig.setInfrastructure(infrastructure);
+                    newConfig.setBasePort(port);
+                    newConfig.setEnabled(true);
+                    return deploymentConfigRepository.save(newConfig);
+                });
+
         ServiceInstance instance = new ServiceInstance();
         instance.setInstanceId(instanceId);
+        instance.setDeploymentConfig(deploymentConfig);
         instance.setServiceName(serviceName);
         instance.setMachineName(machineName);
         instance.setInfraType(infraType);
@@ -877,9 +1019,6 @@ public class DataInitializer implements CommandLineRunner {
         instance.setVersion(version);
         instance.setUptimeSeconds(uptimeSeconds);
         instance.setStatus(status);
-        instance.setLogUrl("https://logs.example.com/" + instanceId);
-        instance.setMetricsUrl("https://metrics.example.com/" + instanceId);
-        instance.setComponent(component);
         serviceInstanceRepository.save(instance);
     }
 
@@ -942,7 +1081,7 @@ public class DataInitializer implements CommandLineRunner {
             componentsMap.put("analytics-dashboard", createComponent(project, "analytics-dashboard", "Real-time analytics and dashboards", "Integration & Support"));
             componentsMap.put("workflow-engine", createComponent(project, "workflow-engine", "Business workflow orchestration", "Integration & Support"));
 
-        } else {
+        } else if (projectType.equals("KYC")) {
             // Customer Onboarding Components (10)
             componentsMap.put("customer-onboarding-portal", createComponent(project, "customer-onboarding-portal", "Digital customer onboarding platform", "Customer Onboarding"));
             componentsMap.put("identity-verification-service", createComponent(project, "identity-verification-service", "Identity verification and validation", "Customer Onboarding"));
@@ -997,6 +1136,72 @@ public class DataInitializer implements CommandLineRunner {
             componentsMap.put("audit-log-manager", createComponent(project, "audit-log-manager", "Comprehensive audit logging", "Integration & Support"));
             componentsMap.put("workflow-orchestrator", createComponent(project, "workflow-orchestrator", "Business process orchestration", "Integration & Support"));
             componentsMap.put("rule-engine", createComponent(project, "rule-engine", "Business rules engine", "Integration & Support"));
+
+        } else if (projectType.equals("EventHorizon")) {
+            // Event Streaming Components (8)
+            componentsMap.put("event-ingestion-engine", createComponent(project, "event-ingestion-engine", "High-throughput event ingestion from multiple sources", "Event Streaming"));
+            componentsMap.put("stream-processor", createComponent(project, "stream-processor", "Real-time stream processing and transformation", "Event Streaming"));
+            componentsMap.put("event-router", createComponent(project, "event-router", "Intelligent event routing and distribution", "Event Streaming"));
+            componentsMap.put("event-store", createComponent(project, "event-store", "Durable event storage and replay", "Event Streaming"));
+            componentsMap.put("real-time-analytics-engine", createComponent(project, "real-time-analytics-engine", "Real-time analytics and aggregation", "Event Streaming"));
+            componentsMap.put("notification-dispatcher", createComponent(project, "notification-dispatcher", "Multi-channel notification delivery", "Event Streaming"));
+            componentsMap.put("audit-event-logger", createComponent(project, "audit-event-logger", "Audit trail event logging", "Event Streaming"));
+            componentsMap.put("metrics-aggregator", createComponent(project, "metrics-aggregator", "Real-time metrics collection and aggregation", "Event Streaming"));
+
+            // Schema & Configuration (4)
+            componentsMap.put("schema-registry", createComponent(project, "schema-registry", "Event schema management and versioning", "Schema & Config"));
+            componentsMap.put("kafka-cluster-manager", createComponent(project, "kafka-cluster-manager", "Kafka cluster management and monitoring", "Schema & Config"));
+            componentsMap.put("connector-hub", createComponent(project, "connector-hub", "Source and sink connector management", "Schema & Config"));
+            componentsMap.put("config-manager", createComponent(project, "config-manager", "Centralized configuration management", "Schema & Config"));
+
+            // Integration & Support (5)
+            componentsMap.put("api-gateway", createComponent(project, "api-gateway", "REST/GraphQL API gateway for event queries", "Integration & Support"));
+            componentsMap.put("reporting-engine", createComponent(project, "reporting-engine", "Event analytics and reporting", "Integration & Support"));
+            componentsMap.put("analytics-dashboard", createComponent(project, "analytics-dashboard", "Real-time event dashboards", "Integration & Support"));
+            componentsMap.put("notification-service", createComponent(project, "notification-service", "Alert and notification service", "Integration & Support"));
+            componentsMap.put("monitoring-platform", createComponent(project, "monitoring-platform", "Platform health monitoring", "Integration & Support"));
+
+        } else if (projectType.equals("Khayyam")) {
+            // Spot Pricing Core (8)
+            componentsMap.put("spot-pricing-engine", createComponent(project, "spot-pricing-engine", "Real-time spot price calculation engine", "Pricing Core"));
+            componentsMap.put("market-data-ingestion", createComponent(project, "market-data-ingestion", "Multi-source market data ingestion", "Pricing Core"));
+            componentsMap.put("historical-data-store", createComponent(project, "historical-data-store", "Time-series historical data storage", "Pricing Core"));
+            componentsMap.put("pricing-model-engine", createComponent(project, "pricing-model-engine", "Advanced pricing model execution", "Pricing Core"));
+            componentsMap.put("volatility-calculator", createComponent(project, "volatility-calculator", "Real-time volatility calculation", "Pricing Core"));
+            componentsMap.put("liquidity-analyzer", createComponent(project, "liquidity-analyzer", "Market liquidity analysis", "Pricing Core"));
+            componentsMap.put("spread-calculator", createComponent(project, "spread-calculator", "Bid-ask spread calculation", "Pricing Core"));
+            componentsMap.put("fair-value-calculator", createComponent(project, "fair-value-calculator", "Fair value pricing calculation", "Pricing Core"));
+
+            // Risk & Analytics (6)
+            componentsMap.put("risk-assessment-engine", createComponent(project, "risk-assessment-engine", "Real-time risk assessment", "Risk & Analytics"));
+            componentsMap.put("correlation-analyzer", createComponent(project, "correlation-analyzer", "Cross-asset correlation analysis", "Risk & Analytics"));
+            componentsMap.put("scenario-simulator", createComponent(project, "scenario-simulator", "Monte Carlo and scenario simulation", "Risk & Analytics"));
+            componentsMap.put("var-calculator", createComponent(project, "var-calculator", "Value at Risk calculation", "Risk & Analytics"));
+            componentsMap.put("stress-test-engine", createComponent(project, "stress-test-engine", "Stress testing and sensitivity analysis", "Risk & Analytics"));
+            componentsMap.put("backtesting-framework", createComponent(project, "backtesting-framework", "Strategy backtesting framework", "Risk & Analytics"));
+
+            // Order Management (5)
+            componentsMap.put("order-execution-engine", createComponent(project, "order-execution-engine", "Spot order execution", "Order Management"));
+            componentsMap.put("order-book-manager", createComponent(project, "order-book-manager", "Real-time order book management", "Order Management"));
+            componentsMap.put("trade-confirmation-system", createComponent(project, "trade-confirmation-system", "Trade confirmation and reporting", "Order Management"));
+            componentsMap.put("position-tracker", createComponent(project, "position-tracker", "Real-time position tracking", "Order Management"));
+            componentsMap.put("pnl-calculator", createComponent(project, "pnl-calculator", "Profit and loss calculation", "Order Management"));
+
+            // Data & Integration (6)
+            componentsMap.put("data-validation-engine", createComponent(project, "data-validation-engine", "Market data validation and cleansing", "Data & Integration"));
+            componentsMap.put("reference-data-manager", createComponent(project, "reference-data-manager", "Instrument reference data", "Data & Integration"));
+            componentsMap.put("schema-registry", createComponent(project, "schema-registry", "Data schema management", "Data & Integration"));
+            componentsMap.put("api-gateway", createComponent(project, "api-gateway", "External API gateway", "Data & Integration"));
+            componentsMap.put("notification-hub", createComponent(project, "notification-hub", "Price alert notifications", "Data & Integration"));
+            componentsMap.put("audit-log-service", createComponent(project, "audit-log-service", "Comprehensive audit logging", "Data & Integration"));
+
+            // Reporting & Visualization (5)
+            componentsMap.put("reporting-engine", createComponent(project, "reporting-engine", "Pricing and risk reporting", "Reporting"));
+            componentsMap.put("analytics-dashboard", createComponent(project, "analytics-dashboard", "Real-time pricing dashboards", "Reporting"));
+            componentsMap.put("chart-generator", createComponent(project, "chart-generator", "Price chart generation", "Reporting"));
+            componentsMap.put("market-snapshot-service", createComponent(project, "market-snapshot-service", "Market snapshot reports", "Reporting"));
+            componentsMap.put("compliance-reporter", createComponent(project, "compliance-reporter", "Regulatory compliance reporting", "Reporting"));
+
         }
 
         return componentsMap;
@@ -1007,6 +1212,9 @@ public class DataInitializer implements CommandLineRunner {
         component.setComponentName(name);
         component.setDescription(description);
         component.setModule(module);
+        String[] infraTypes = {"linux", "windows", "ecs"};
+        component.setDefaultInfraType(infraTypes[random.nextInt(infraTypes.length)]);
+        component.setDefaultPort(7000 + random.nextInt(2000));
         component.setProject(project);
         return componentRepository.save(component);
     }
@@ -1033,5 +1241,91 @@ public class DataInitializer implements CommandLineRunner {
             default:
                 return "us-east-1a";
         }
+    }
+
+    /**
+     * Extract profile from infrastructure name
+     * Examples:
+     *   "event-horizon-dev-vm-01" -> "dev"
+     *   "khayyam-apac-prod-vm-01" -> "apac-prod"
+     *   "khayyam-apac-uat1-vm-01" -> "apac-uat1"
+     */
+    private String extractProfileFromInfraName(String infraName) {
+        if (infraName == null || infraName.isEmpty()) {
+            return null;
+        }
+
+        // Split by "-" and remove project name and "vm-XX" suffix
+        String[] parts = infraName.split("-");
+        if (parts.length < 4) {
+            return null;
+        }
+
+        // Build profile from the middle parts (skip first 1-2 parts for project name, and last 2 for "vm-XX")
+        StringBuilder profile = new StringBuilder();
+        int startIdx = (parts[0].equals("event") && parts[1].equals("horizon")) ? 2 : 1;
+        int endIdx = parts.length - 2;
+
+        for (int i = startIdx; i < endIdx; i++) {
+            if (!profile.isEmpty()) {
+                profile.append("-");
+            }
+            profile.append(parts[i]);
+        }
+
+        return profile.toString();
+    }
+
+    /**
+     * Create deployment parameters as JSON stored in byte array
+     * For ECS: MIN_POD=1, MAX_POD=5, REQ_MEMORY=1GB, LIMIT_MEMORY=2GB, REQ_CPU=100m, LIMIT_CPU=250m
+     * For Linux/Windows: MAX_MEMORY=2GB
+     */
+    private byte[] createDeploymentParams(String infraType) {
+        Map<String, Object> params = new HashMap<>();
+
+        if ("ecs".equalsIgnoreCase(infraType)) {
+            // ECS parameters
+            params.put("MIN_POD", 1);
+            params.put("MAX_POD", 5);
+            params.put("REQ_MEMORY", "1GB");
+            params.put("LIMIT_MEMORY", "2GB");
+            params.put("REQ_CPU", "100m");
+            params.put("LIMIT_CPU", "250m");
+        } else {
+            // Linux/Windows VM parameters
+            params.put("MAX_MEMORY", "2GB");
+        }
+
+        // Convert to JSON string and then to bytes
+        String jsonString = convertMapToJson(params);
+        return jsonString.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Simple JSON converter for deployment params
+     */
+    private String convertMapToJson(Map<String, Object> map) {
+        StringBuilder json = new StringBuilder("{");
+        boolean first = true;
+
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            if (!first) {
+                json.append(",");
+            }
+            first = false;
+
+            json.append("\"").append(entry.getKey()).append("\":");
+
+            Object value = entry.getValue();
+            if (value instanceof String) {
+                json.append("\"").append(value).append("\"");
+            } else {
+                json.append(value);
+            }
+        }
+
+        json.append("}");
+        return json.toString();
     }
 }

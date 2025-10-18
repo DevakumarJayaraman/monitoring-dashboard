@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { useState, useEffect, type MouseEvent } from "react";
 import type { Project } from "../../types/project.ts";
-import { fetchAllProjects, retireProject, type ApiProject } from "../../services/api.ts";
+import { fetchAllProjects, retireProject, fetchProjectMappings, type ApiProject } from "../../services/api.ts";
 import { Header } from "../layout/Header.tsx";
 import { Footer } from "../layout/Footer.tsx";
 import { useTheme } from "../../context/ThemeContext.tsx";
@@ -90,6 +90,40 @@ export function ProjectSelection({ onProjectSelect }: ProjectSelectionProps): JS
     e.stopPropagation(); // Prevent triggering project selection
     setSelectedProjectForEdit(project);
     setIsAddProjectModalOpen(true);
+  };
+
+  const handleProjectClick = async (project: Project) => {
+    try {
+      console.log('ProjectSelection - handleProjectClick called for project:', project.name);
+
+      // Fetch project mappings to get configured environments, regions, and profiles
+      const mappings = await fetchProjectMappings(parseInt(project.id));
+      console.log('ProjectSelection - fetched mappings:', mappings);
+
+      // Extract unique environments, regions, and profiles from mappings
+      const environments = [...new Set(mappings.map(m => m.envCode))];
+      const regions = [...new Set(mappings.map(m => m.regionCode))];
+      const profiles = [...new Set(mappings.flatMap(m => m.profileCodes))];
+
+      console.log('ProjectSelection - extracted environments:', environments);
+      console.log('ProjectSelection - extracted regions:', regions);
+      console.log('ProjectSelection - extracted profiles:', profiles);
+
+      // Enrich project with configuration data
+      const enrichedProject: Project = {
+        ...project,
+        configuredEnvironments: environments,
+        configuredRegions: regions,
+        configuredProfiles: profiles,
+      };
+
+      console.log('ProjectSelection - enriched project with configurations:', enrichedProject);
+      onProjectSelect(enrichedProject);
+    } catch (err) {
+      console.error('Failed to load project configurations:', err);
+      // Fall back to selecting project without configurations
+      onProjectSelect(project);
+    }
   };
 
   const handleRetireProject = async (project: Project, e: MouseEvent) => {
@@ -253,14 +287,14 @@ export function ProjectSelection({ onProjectSelect }: ProjectSelectionProps): JS
             {projects.map((project) => (
               <div
                 key={project.id}
-                onClick={() => onProjectSelect(project)}
+                onClick={() => handleProjectClick(project)}
                 className={`group relative cursor-pointer rounded-xl border p-6 transition-all duration-300 hover:scale-[1.02] hover:border-emerald-500/50 ${getCardGradient()} ${getCardShadow()}`}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    onProjectSelect(project);
+                    handleProjectClick(project);
                   }
                 }}
               >

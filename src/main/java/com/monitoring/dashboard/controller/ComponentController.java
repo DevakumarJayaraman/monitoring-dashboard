@@ -1,6 +1,7 @@
 package com.monitoring.dashboard.controller;
 
 import com.monitoring.dashboard.dto.ComponentDTO;
+import com.monitoring.dashboard.dto.ComponentWithServicesDTO;
 import com.monitoring.dashboard.service.ComponentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -34,9 +35,9 @@ public class ComponentController {
                             schema = @Schema(implementation = ComponentDTO.class))),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @GetMapping
+    @GetMapping("/getAllComponents")
     public ResponseEntity<List<ComponentDTO>> getAllComponents() {
-        log.info("GET /api/components - Get all components");
+        log.info("GET /api/components/getAllComponents - Get all components");
         return ResponseEntity.ok(componentService.getAllComponents());
     }
 
@@ -48,9 +49,9 @@ public class ComponentController {
             @ApiResponse(responseCode = "404", description = "Component not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @GetMapping("/{id}")
+    @GetMapping("/getComponentById/{id}")
     public ResponseEntity<ComponentDTO> getComponentById(@PathVariable Long id) {
-        log.info("GET /api/components/{} - Get component by id", id);
+        log.info("GET /api/components/getComponentById/{} - Get component by id", id);
         return ResponseEntity.ok(componentService.getComponentById(id));
     }
 
@@ -62,9 +63,9 @@ public class ComponentController {
             @ApiResponse(responseCode = "404", description = "Component not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @GetMapping("/name/{name}")
+    @GetMapping("/getComponentByName/{name}")
     public ResponseEntity<ComponentDTO> getComponentByName(@PathVariable String name) {
-        log.info("GET /api/components/name/{} - Get component by name", name);
+        log.info("GET /api/components/getComponentByName/{} - Get component by name", name);
         return ResponseEntity.ok(componentService.getComponentByName(name));
     }
 
@@ -76,9 +77,9 @@ public class ComponentController {
             @ApiResponse(responseCode = "404", description = "No components found for the module"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @GetMapping("/module/{module}")
+    @GetMapping("/getComponentsByModule/{module}")
     public ResponseEntity<List<ComponentDTO>> getComponentsByModule(@PathVariable String module) {
-        log.info("GET /api/components/module/{} - Get components by module", module);
+        log.info("GET /api/components/getComponentsByModule/{} - Get components by module", module);
         return ResponseEntity.ok(componentService.getComponentsByModule(module));
     }
 
@@ -86,14 +87,14 @@ public class ComponentController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved list of components",
                     content = @Content(mediaType = "application/json",
-                            schema = @Schema(implementation = ComponentDTO.class))),
+                            schema = @Schema(implementation = ComponentWithServicesDTO.class))),
             @ApiResponse(responseCode = "404", description = "No components found for the project"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @GetMapping("/project/{projectId}")
-    public ResponseEntity<List<ComponentDTO>> getComponentsByProject(@PathVariable Long projectId) {
-        log.info("GET /api/components/project/{} - Get components by project", projectId);
-        return ResponseEntity.ok(componentService.getComponentsByProject(projectId));
+    @GetMapping("/getComponentsByProject/{projectId}")
+    public ResponseEntity<List<ComponentWithServicesDTO>> getComponentsByProject(@PathVariable Long projectId) {
+        log.info("GET /api/components/getComponentsByProject/{} - Get components by project", projectId);
+        return ResponseEntity.ok(componentService.getComponentsWithServicesByProjectId(projectId));
     }
 
     @Operation(summary = "Create a new component", description = "Add a new component to the system")
@@ -104,9 +105,9 @@ public class ComponentController {
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @PostMapping
+    @PostMapping("/createComponent")
     public ResponseEntity<ComponentDTO> createComponent(@Valid @RequestBody ComponentDTO dto) {
-        log.info("POST /api/components - Create component: {}", dto.getComponentName());
+        log.info("POST /api/components/createComponent - Create component: {}", dto.getComponentName());
         ComponentDTO created = componentService.createComponent(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -120,9 +121,9 @@ public class ComponentController {
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @PutMapping("/{id}")
+    @PutMapping("/updateComponent/{id}")
     public ResponseEntity<ComponentDTO> updateComponent(@PathVariable Long id, @Valid @RequestBody ComponentDTO dto) {
-        log.info("PUT /api/components/{} - Update component", id);
+        log.info("PUT /api/components/updateComponent/{} - Update component", id);
         return ResponseEntity.ok(componentService.updateComponent(id, dto));
     }
 
@@ -132,9 +133,9 @@ public class ComponentController {
             @ApiResponse(responseCode = "404", description = "Component not found"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/deleteComponent/{id}")
     public ResponseEntity<Void> deleteComponent(@PathVariable Long id) {
-        log.info("DELETE /api/components/{} - Delete component", id);
+        log.info("DELETE /api/components/deleteComponent/{} - Delete component", id);
         componentService.deleteComponent(id);
         return ResponseEntity.noContent().build();
     }

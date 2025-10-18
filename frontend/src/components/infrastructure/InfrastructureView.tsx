@@ -1073,6 +1073,7 @@ export function InfrastructureView({ selectedProject }: InfrastructureViewProps)
         isOpen={formModal.isOpen}
         machine={formModal.machine}
         projectId={selectedProject ? parseInt(selectedProject.id) : undefined}
+        selectedProject={selectedProject}
         onClose={() => setFormModal({ isOpen: false, machine: null })}
         onSuccess={() => {
           // Reload infrastructure data
@@ -1170,3 +1171,4 @@ export function InfrastructureView({ selectedProject }: InfrastructureViewProps)
     </div>
   );
 }
+

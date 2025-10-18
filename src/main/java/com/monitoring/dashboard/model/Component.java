@@ -25,6 +25,10 @@ public class Component {
     private String description;
     @Column(name = "module", length = 100)
     private String module;
+    @Column(name = "defaultInfraType", length = 50)
+    private String defaultInfraType;
+    @Column(name = "defaultPort")
+    private Integer defaultPort;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projectId")
     @JsonIgnore
@@ -34,11 +38,5 @@ public class Component {
     private Long version = 0L;
     @OneToMany(mappedBy = "component", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
-    private List<ComponentDeployment> deployments = new ArrayList<>();
-    @OneToMany(mappedBy = "component", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore
     private List<DeploymentConfig> deploymentConfigs = new ArrayList<>();
-    @OneToMany(mappedBy = "component", cascade = CascadeType.ALL)
-    @JsonIgnore
-    private List<ServiceInstance> serviceInstances = new ArrayList<>();
 }

@@ -9,7 +9,7 @@ import { ProjectSelection } from "./components/project/ProjectSelection.tsx";
 import { InfrastructureFormModal } from "./components/infrastructure/InfrastructureFormModal.tsx";
 import { AddServiceModal, type ComponentFormData } from "./components/modals/AddServiceModal.tsx";
 import { Toast } from "./components/shared/Toast.tsx";
-import { createComponent } from "./services/api.ts";
+import { createComponent, createComponentDeployments } from "./services/api.ts";
 import type { Project } from "./types/project.ts";
 
 type AppView = "infrastructure" | "services" | "deployment";
@@ -41,12 +41,30 @@ export default function App() {
 
   const handleSaveService = async (data: ComponentFormData) => {
     try {
-      await createComponent({
+      const created = await createComponent({
         componentName: data.componentName,
         module: data.module,
         description: data.description,
         projectId: data.projectId,
+        defaultInfraType: data.defaultInfraType,
+        defaultPort: data.defaultPort,
       });
+
+      // If the form included deployments, create them and associate with the created component
+      if (data.deployments && data.deployments.length > 0) {
+        const payload = {
+          deployments: data.deployments.map(d => ({
+            componentId: created.componentId,
+            infraId: d.infraId,
+            profile: d.profile,
+            port: d.port,
+            // componentVersion removed in modal; don't send it here
+            dynamicParams: d.dynamicParams,
+          })),
+        };
+
+        await createComponentDeployments(payload);
+      }
 
       showToast("Service component created successfully.", "success");
     } catch (error) {
@@ -128,6 +146,7 @@ export default function App() {
         isOpen={isAddInfraModalOpen}
         machine={null}
         projectId={selectedProject ? parseInt(selectedProject.id, 10) : undefined}
+        selectedProject={selectedProject}
         onClose={() => setIsAddInfraModalOpen(false)}
         onSuccess={() => {
           console.log('Infrastructure successfully created/updated via API');

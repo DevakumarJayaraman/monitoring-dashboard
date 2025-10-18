@@ -9,4 +9,8 @@ export type Project = {
   // Infrastructure breakdown by environment and type
   // e.g., { "DEV": { "linux": 5, "windows": 3, "ecs": 2 }, "UAT": {...}, ... }
   infrastructureByEnv: Record<string, Record<string, number>>;
+  // Project configurations
+  configuredEnvironments?: string[];
+  configuredRegions?: string[];
+  configuredProfiles?: string[];
 };

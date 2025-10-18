@@ -9,17 +9,55 @@ export interface ApiComponent {
   projectId?: number;
   projectName?: string;
   totalDeployments?: number;
+  defaultInfraType?: string;
+  defaultPort?: number;
+}
+
+export interface ApiComponentWithServices {
+  componentId: number;
+  componentName: string;
+  description?: string;
+  module?: string;
+  projectId?: number;
+  projectName?: string;
+  defaultInfraType?: string;
+  defaultPort?: number;
+  serviceInstanceCount?: number;
+  serviceInstances?: Array<{
+    instanceId: string;
+    serviceName: string;
+    machineName: string;
+    infraType: string;
+    profile: string;
+    version?: string;
+    port?: number;
+    uptimeSeconds?: number;
+    status?: string;
+    logUrl?: string;
+    metricsUrl?: string;
+  }>;
+  deploymentConfigs?: Array<{
+    configId: number;
+    componentId: number;
+    infraId: number;
+    basePort?: number;
+    enabled?: boolean;
+    profile?: string;
+    deployParams?: Record<string, string>;
+  }>;
 }
 
 export interface ApiComponentDeployment {
-  mappingId: number;
+  configId?: number;
   componentId: number;
-  componentName: string;
+  componentName?: string;
   infraId: number;
-  infraType: string;
-  profile: string;
+  infraType?: string;
+  profile?: string;
   port?: number;
   hostname?: string;
+  environment?: string;
+  region?: string;
   dynamicParams?: Record<string, string>;
 }
 
@@ -139,7 +177,7 @@ export interface PodMetric {
 // Service Instance API calls
 export async function fetchAllServiceInstances(): Promise<ApiServiceInstance[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/services/instances`);
+    const response = await fetch(`${API_BASE_URL}/services/getAllServiceInstances`);
     if (!response.ok) {
       throw new Error(`Failed to fetch service instances: ${response.statusText}`);
     }
@@ -151,7 +189,7 @@ export async function fetchAllServiceInstances(): Promise<ApiServiceInstance[]> 
 }
 
 export async function fetchServiceInstanceById(id: string): Promise<ApiServiceInstance> {
-  const response = await fetch(`${API_BASE_URL}/services/instances/${id}`);
+  const response = await fetch(`${API_BASE_URL}/services/getServiceInstanceById/${id}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch service instance: ${response.statusText}`);
   }
@@ -159,7 +197,7 @@ export async function fetchServiceInstanceById(id: string): Promise<ApiServiceIn
 }
 
 export async function fetchServiceInstancesByProfile(profile: string): Promise<ApiServiceInstance[]> {
-  const response = await fetch(`${API_BASE_URL}/services/instances/profile/${profile}`);
+  const response = await fetch(`${API_BASE_URL}/services/getServiceInstancesByProfile/${profile}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch service instances for profile ${profile}: ${response.statusText}`);
   }
@@ -167,7 +205,7 @@ export async function fetchServiceInstancesByProfile(profile: string): Promise<A
 }
 
 export async function fetchServiceInstancesByName(serviceName: string): Promise<ApiServiceInstance[]> {
-  const response = await fetch(`${API_BASE_URL}/services/instances/name/${serviceName}`);
+  const response = await fetch(`${API_BASE_URL}/services/getServiceInstancesByName/${serviceName}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch instances for service ${serviceName}: ${response.statusText}`);
   }
@@ -175,7 +213,7 @@ export async function fetchServiceInstancesByName(serviceName: string): Promise<
 }
 
 export async function fetchServiceInstancesByInfraType(infraType: string): Promise<ApiServiceInstance[]> {
-  const response = await fetch(`${API_BASE_URL}/services/instances/type/${infraType}`);
+  const response = await fetch(`${API_BASE_URL}/services/getServiceInstancesByInfraType/${infraType}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch service instances for infra type ${infraType}: ${response.statusText}`);
   }
@@ -183,7 +221,7 @@ export async function fetchServiceInstancesByInfraType(infraType: string): Promi
 }
 
 export async function fetchServiceInstancesByStatus(status: string): Promise<ApiServiceInstance[]> {
-  const response = await fetch(`${API_BASE_URL}/services/instances/status/${status}`);
+  const response = await fetch(`${API_BASE_URL}/services/getServiceInstancesByStatus/${status}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch service instances with status ${status}: ${response.statusText}`);
   }
@@ -192,7 +230,7 @@ export async function fetchServiceInstancesByStatus(status: string): Promise<Api
 
 export async function fetchServiceInstancesByProject(projectId: number): Promise<ApiServiceInstance[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/services/instances/project/${projectId}`);
+    const response = await fetch(`${API_BASE_URL}/services/getServiceInstancesByProject/${projectId}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch service instances for project ${projectId}: ${response.statusText}`);
     }
@@ -206,7 +244,7 @@ export async function fetchServiceInstancesByProject(projectId: number): Promise
 // Infrastructure API calls
 export async function fetchAllInfrastructure(): Promise<ApiInfraDetail[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure`);
+    const response = await fetch(`${API_BASE_URL}/infrastructure/getAllInfrastructure`);
     if (!response.ok) {
       throw new Error(`Failed to fetch infrastructure: ${response.statusText}`);
     }
@@ -218,33 +256,16 @@ export async function fetchAllInfrastructure(): Promise<ApiInfraDetail[]> {
 }
 
 export async function fetchInfrastructureById(id: number): Promise<ApiInfraDetail> {
-  const response = await fetch(`${API_BASE_URL}/infrastructure/${id}`);
+  const response = await fetch(`${API_BASE_URL}/infrastructure/getInfrastructureById/${id}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch infrastructure: ${response.statusText}`);
   }
   return response.json();
 }
 
-export async function fetchInfrastructureByType(type: string): Promise<ApiInfraDetail[]> {
-  const response = await fetch(`${API_BASE_URL}/infrastructure/type/${type}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch infrastructure by type ${type}: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-export async function fetchInfrastructureByEnvironment(environment: string): Promise<ApiInfraDetail[]> {
-  const response = await fetch(`${API_BASE_URL}/infrastructure/environment/${environment}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch infrastructure by environment ${environment}: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-// Infrastructure Details API calls (with comprehensive metrics)
 export async function fetchAllInfrastructureDetails(): Promise<InfraDetailDTO[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure/details`);
+    const response = await fetch(`${API_BASE_URL}/infrastructure/getAllInfrastructureDetails`);
     if (!response.ok) {
       throw new Error(`Failed to fetch infrastructure details: ${response.statusText}`);
     }
@@ -256,7 +277,7 @@ export async function fetchAllInfrastructureDetails(): Promise<InfraDetailDTO[]>
 }
 
 export async function fetchInfrastructureDetailsById(id: number): Promise<InfraDetailDTO> {
-  const response = await fetch(`${API_BASE_URL}/infrastructure/details/${id}`);
+  const response = await fetch(`${API_BASE_URL}/infrastructure/getInfrastructureDetailsById/${id}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch infrastructure details: ${response.statusText}`);
   }
@@ -264,7 +285,7 @@ export async function fetchInfrastructureDetailsById(id: number): Promise<InfraD
 }
 
 export async function fetchInfrastructureDetailsByType(type: string): Promise<InfraDetailDTO[]> {
-  const response = await fetch(`${API_BASE_URL}/infrastructure/details/type/${type}`);
+  const response = await fetch(`${API_BASE_URL}/infrastructure/getInfrastructureDetailsByType/${type}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch infrastructure details by type ${type}: ${response.statusText}`);
   }
@@ -273,7 +294,7 @@ export async function fetchInfrastructureDetailsByType(type: string): Promise<In
 
 export async function fetchInfrastructureDetailsByProject(projectId: number): Promise<InfraDetailDTO[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure/details/project/${projectId}`);
+    const response = await fetch(`${API_BASE_URL}/infrastructure/getInfrastructureDetailsByProject/${projectId}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch infrastructure details for project ${projectId}: ${response.statusText}`);
     }
@@ -284,298 +305,54 @@ export async function fetchInfrastructureDetailsByProject(projectId: number): Pr
   }
 }
 
-// Create/Update/Delete operations
-export async function createServiceInstance(instance: Partial<ApiServiceInstance>): Promise<ApiServiceInstance> {
-  const response = await fetch(`${API_BASE_URL}/services/instances`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(instance),
-  });
+export async function fetchInfrastructureByName(name: string): Promise<ApiInfraDetail> {
+  const response = await fetch(`${API_BASE_URL}/infrastructure/getInfrastructureByName/${name}`);
   if (!response.ok) {
-    throw new Error(`Failed to create service instance: ${response.statusText}`);
+    throw new Error(`Failed to fetch infrastructure by name ${name}: ${response.statusText}`);
   }
   return response.json();
 }
 
-export async function updateServiceInstance(id: string, instance: Partial<ApiServiceInstance>): Promise<ApiServiceInstance> {
-  const response = await fetch(`${API_BASE_URL}/services/instances/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(instance),
-  });
+export async function fetchInfrastructureByType(type: string): Promise<ApiInfraDetail[]> {
+  const response = await fetch(`${API_BASE_URL}/infrastructure/getInfrastructureByType/${type}`);
   if (!response.ok) {
-    throw new Error(`Failed to update service instance: ${response.statusText}`);
+    throw new Error(`Failed to fetch infrastructure by type ${type}: ${response.statusText}`);
   }
   return response.json();
 }
 
-export async function deleteServiceInstance(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/services/instances/${id}`, {
-    method: 'DELETE',
-  });
+export async function fetchInfrastructureByEnvironment(environment: string): Promise<ApiInfraDetail[]> {
+  const response = await fetch(`${API_BASE_URL}/infrastructure/getInfrastructureByEnvironment/${environment}`);
   if (!response.ok) {
-    throw new Error(`Failed to delete service instance: ${response.statusText}`);
-  }
-}
-
-export interface CreateComponentPayload {
-  componentName: string;
-  module?: string;
-  description?: string;
-  projectId: number;
-}
-
-export async function createComponent(data: CreateComponentPayload): Promise<ApiComponent> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/components`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Failed to create component: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error creating component:', error);
-    throw error;
-  }
-}
-
-export async function fetchComponentsByProject(projectId: number): Promise<ApiComponent[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/components/project/${projectId}`);
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch components by project: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching components by project:', error);
-    throw error;
-  }
-}
-
-export interface CreateComponentDeploymentsPayload {
-  deployments: Array<{
-    componentId: number;
-    infraId: number;
-    profile: string;
-    port?: number;
-    componentVersion?: string;
-    status?: string;
-    uptimeSeconds?: number;
-    dynamicParams?: Record<string, string>;
-  }>;
-}
-
-export async function fetchComponentDeploymentsByProject(projectId: number): Promise<ApiComponentDeployment[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/component-deployments/project/${projectId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch component deployments: ${response.statusText}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching component deployments:', error);
-    throw error;
-  }
-}
-
-export async function createComponentDeployments(payload: CreateComponentDeploymentsPayload): Promise<ApiComponentDeployment[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/component-deployments/batch`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Failed to create component deployments: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error creating component deployments:', error);
-    throw error;
-  }
-}
-
-// Project Environment API calls
-export async function fetchAllEnvironments(): Promise<ProjectEnvironmentDTO[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/environments`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch environments: ${response.statusText}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching environments:', error);
-    throw error;
-  }
-}
-
-export async function fetchAllProfiles(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/environments/profiles`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch profiles: ${response.statusText}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching profiles:', error);
-    throw error;
-  }
-}
-
-export async function fetchEnvironmentsByRegion(region: string): Promise<ProjectEnvironmentDTO[]> {
-  const response = await fetch(`${API_BASE_URL}/environments/region/${region}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch environments for region ${region}: ${response.statusText}`);
+    throw new Error(`Failed to fetch infrastructure by environment ${environment}: ${response.statusText}`);
   }
   return response.json();
 }
 
-export async function fetchEnvironmentsByEnvCode(envCode: string): Promise<ProjectEnvironmentDTO[]> {
-  const response = await fetch(`${API_BASE_URL}/environments/envcode/${envCode}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch environments for code ${envCode}: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-// Service Control API calls
-export interface ServiceActionRequest {
-  instanceIds: string[];
-}
-
-export interface ServiceActionResponse {
-  instanceId: string;
-  serviceName: string;
-  success: boolean;
-  message: string;
-  newStatus?: 'running' | 'degraded' | 'restarting' | 'stopped' | 'starting' | 'stopping';
-}
-
-export async function startServiceInstances(instanceIds: string[]): Promise<ServiceActionResponse[]> {
+export async function fetchDistinctEnvironments(): Promise<string[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/services/actions/start`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ instanceIds }),
-    });
-    
+    const response = await fetch(`${API_BASE_URL}/infrastructure/getDistinctEnvironments`);
     if (!response.ok) {
-      throw new Error(`Failed to start service instances: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to fetch environments: ${response.status}`);
     }
-    
     return await response.json();
   } catch (error) {
-    console.error('Error starting service instances:', error);
+    console.error('Error fetching distinct environments:', error);
     throw error;
   }
 }
 
-export async function stopServiceInstances(instanceIds: string[]): Promise<ServiceActionResponse[]> {
+export async function fetchDistinctRegions(): Promise<string[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/services/actions/stop`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ instanceIds }),
-    });
-    
+    const response = await fetch(`${API_BASE_URL}/infrastructure/getDistinctRegions`);
     if (!response.ok) {
-      throw new Error(`Failed to stop service instances: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to fetch regions: ${response.status}`);
     }
-    
     return await response.json();
   } catch (error) {
-    console.error('Error stopping service instances:', error);
+    console.error('Error fetching distinct regions:', error);
     throw error;
   }
-}
-
-// ==================== Project APIs ====================
-
-export interface ApiProject {
-  id: number;
-  name: string;
-  description: string;
-  totalServices: number;
-  totalInfrastructure: number;
-  healthStatus: 'healthy' | 'warning' | 'critical';
-  lastUpdated: string;
-  // Infrastructure breakdown by environment and type
-  // e.g., { "DEV": { "linux": 5, "windows": 3, "ecs": 2 }, "UAT": {...}, ... }
-  infrastructureByEnv: Record<string, Record<string, number>>;
-}
-
-/**
- * Fetch all projects with their aggregated statistics
- */
-export async function fetchAllProjects(): Promise<ApiProject[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/projects`);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch projects: ${response.status} ${response.statusText}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching projects:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch a specific project by ID
- */
-export async function fetchProjectById(projectId: number): Promise<ApiProject> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/projects/${projectId}`);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch project: ${response.status} ${response.statusText}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching project:', error);
-    throw error;
-  }
-}
-
-/**
- * Infrastructure CRUD operations
- */
-
-export interface InfrastructureCreateDTO {
-  infraType: string;
-  hostname: string;
-  ipAddress?: string;
-  environment: string;
-  region?: string;
-  datacenter?: string;
-  status?: string;
-  projectId?: number;
 }
 
 /**
@@ -583,7 +360,7 @@ export interface InfrastructureCreateDTO {
  */
 export async function createInfrastructure(data: InfrastructureCreateDTO): Promise<InfraDetailDTO> {
   try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure`, {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/createInfrastructure`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -608,7 +385,7 @@ export async function createInfrastructure(data: InfrastructureCreateDTO): Promi
  */
 export async function updateInfrastructure(id: number, data: InfrastructureCreateDTO): Promise<InfraDetailDTO> {
   try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/updateInfrastructure/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -633,7 +410,7 @@ export async function updateInfrastructure(id: number, data: InfrastructureCreat
  */
 export async function deleteInfrastructure(id: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/infrastructure/deleteInfrastructure/${id}`, {
       method: 'DELETE',
     });
     
@@ -642,42 +419,6 @@ export async function deleteInfrastructure(id: number): Promise<void> {
     }
   } catch (error) {
     console.error('Error deleting infrastructure:', error);
-    throw error;
-  }
-}
-
-/**
- * Get distinct environments
- */
-export async function fetchDistinctEnvironments(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure/metadata/environments`);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch environments: ${response.status}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching distinct environments:', error);
-    throw error;
-  }
-}
-
-/**
- * Get distinct regions
- */
-export async function fetchDistinctRegions(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/infrastructure/metadata/regions`);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch regions: ${response.status}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching distinct regions:', error);
     throw error;
   }
 }
@@ -717,7 +458,7 @@ export interface ProjectCreateDTO {
  */
 export async function createProject(data: ProjectCreateDTO): Promise<ApiProject> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects`, {
+    const response = await fetch(`${API_BASE_URL}/projects/createProject`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -742,7 +483,7 @@ export async function createProject(data: ProjectCreateDTO): Promise<ApiProject>
  */
 export async function updateProject(id: number, data: ProjectCreateDTO): Promise<ApiProject> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/projects/updateProject/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -766,7 +507,7 @@ export async function updateProject(id: number, data: ProjectCreateDTO): Promise
  * Delete a project
  */
 export async function deleteProject(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/projects/${id}`, {
+  const response = await fetch(`${API_BASE_URL}/projects/deleteProject/${id}`, {
     method: 'DELETE',
   });
 
@@ -781,7 +522,7 @@ export async function deleteProject(id: number): Promise<void> {
  */
 export async function retireProject(id: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/${id}/retire`, {
+    const response = await fetch(`${API_BASE_URL}/projects/retireProject/${id}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -803,8 +544,8 @@ export async function retireProject(id: number): Promise<void> {
  */
 export async function fetchProjectEnvironments(): Promise<EnvironmentDTO[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/metadata/environments`);
-    
+    const response = await fetch(`${API_BASE_URL}/projects/getAllEnvironments`);
+
     if (!response.ok) {
       throw new Error(`Failed to fetch environments: ${response.status}`);
     }
@@ -821,8 +562,8 @@ export async function fetchProjectEnvironments(): Promise<EnvironmentDTO[]> {
  */
 export async function fetchProjectRegions(): Promise<RegionDTO[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/metadata/regions`);
-    
+    const response = await fetch(`${API_BASE_URL}/projects/getAllRegions`);
+
     if (!response.ok) {
       throw new Error(`Failed to fetch regions: ${response.status}`);
     }
@@ -851,7 +592,7 @@ export interface ProjectEnvironmentMappingDetailDTO {
 
 export async function fetchProjectMappings(projectId: number): Promise<ProjectEnvironmentMappingDetailDTO[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/mappings`);
+    const response = await fetch(`${API_BASE_URL}/projects/getProjectMappings/${projectId}`);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch project mappings: ${response.status}`);
@@ -872,7 +613,7 @@ export async function saveProjectMapping(
   mapping: ProjectEnvironmentMappingDTO
 ): Promise<ProjectEnvironmentMappingDetailDTO> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/mappings`, {
+    const response = await fetch(`${API_BASE_URL}/projects/saveMappingForProject/${projectId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -897,7 +638,7 @@ export async function saveProjectMapping(
  */
 export async function deleteProjectMapping(projectId: number, perId: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/mappings/${perId}`, {
+    const response = await fetch(`${API_BASE_URL}/projects/deleteMappingForProject/${projectId}/${perId}`, {
       method: 'DELETE',
     });
 
@@ -907,6 +648,353 @@ export async function deleteProjectMapping(projectId: number, perId: number): Pr
     }
   } catch (error) {
     console.error('Error deleting project mapping:', error);
+    throw error;
+  }
+}
+
+// --- Type definitions for missing types ---
+export interface InfrastructureCreateDTO {
+  infraType: string;
+  hostname: string;
+  ipAddress?: string;
+  environment: string;
+  region?: string;
+  datacenter?: string;
+  status?: string;
+  projectId?: number;
+}
+
+export interface ApiProject {
+  id: number;
+  name: string;
+  description: string;
+  totalServices: number;
+  totalInfrastructure: number;
+  healthStatus: 'healthy' | 'warning' | 'critical';
+  lastUpdated: string;
+  infrastructureByEnv: Record<string, Record<string, number>>;
+}
+
+export async function fetchAllProfiles(): Promise<string[]> {
+  const response = await fetch(`${API_BASE_URL}/environments/getProfiles`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch profiles: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// Create/Update/Delete operations for Service Instances
+export async function createServiceInstance(instance: Partial<ApiServiceInstance>): Promise<ApiServiceInstance> {
+  const response = await fetch(`${API_BASE_URL}/services/createServiceInstance`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(instance),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create service instance: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function updateServiceInstance(id: string, instance: Partial<ApiServiceInstance>): Promise<ApiServiceInstance> {
+  const response = await fetch(`${API_BASE_URL}/services/updateServiceInstance/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(instance),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update service instance: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function deleteServiceInstance(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/services/deleteServiceInstance/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete service instance: ${response.statusText}`);
+  }
+}
+
+// Service Control API calls
+export interface ServiceActionRequest {
+  instanceIds: string[];
+}
+
+export interface ServiceActionResponse {
+  instanceId: string;
+  serviceName: string;
+  success: boolean;
+  message: string;
+  newStatus?: 'running' | 'degraded' | 'restarting' | 'stopped' | 'starting' | 'stopping';
+}
+
+export async function startServiceInstances(instanceIds: string[]): Promise<ServiceActionResponse[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/services/startServiceInstances`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ instanceIds }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to start service instances: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error starting service instances:', error);
+    throw error;
+  }
+}
+
+export async function stopServiceInstances(instanceIds: string[]): Promise<ServiceActionResponse[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/services/stopServiceInstances`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ instanceIds }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to stop service instances: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error stopping service instances:', error);
+    throw error;
+  }
+}
+
+// Component API calls
+export async function fetchComponentsByProject(projectId: number): Promise<ApiComponentWithServices[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/components/getComponentsByProject/${projectId}`);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch components by project: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching components by project:', error);
+    throw error;
+  }
+}
+
+export interface CreateComponentPayload {
+  componentName: string;
+  module?: string;
+  description?: string;
+  projectId: number;
+  defaultInfraType?: string;
+  defaultPort?: number;
+}
+
+export async function createComponent(data: CreateComponentPayload): Promise<ApiComponent> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/components/createComponent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to create component: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating component:', error);
+    throw error;
+  }
+}
+
+export interface CreateComponentDeploymentsPayload {
+  deployments: Array<{
+    componentId: number;
+    infraId: number;
+    profile: string;
+    port?: number;
+    componentVersion?: string;
+    status?: string;
+    uptimeSeconds?: number;
+    dynamicParams?: Record<string, string>;
+  }>;
+}
+
+export async function createComponentDeployments(payload: CreateComponentDeploymentsPayload): Promise<ApiComponentDeployment[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/deployment-config/createBatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to create component deployments: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating component deployments:', error);
+    throw error;
+  }
+}
+
+export interface CreateDeploymentConfigPayload {
+  componentId: number;
+  infraId: number;
+  profile: string;
+  basePort: number;
+  deployParams?: Record<string, string>;
+}
+
+export interface ApiDeploymentConfig {
+  configId: number;
+  basePort?: number;
+  enabled?: boolean;
+}
+
+export interface UpdateDeploymentConfigPayload {
+  componentId: number;
+  infraId: number;
+  profile: string;
+  basePort?: number;
+  deployParams?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export async function createDeploymentConfig(payload: CreateDeploymentConfigPayload): Promise<ApiDeploymentConfig> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/deployment-config/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to create deployment config: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating deployment config:', error);
+    throw error;
+  }
+}
+
+export async function updateDeploymentConfig(configId: number, payload: UpdateDeploymentConfigPayload): Promise<ApiDeploymentConfig> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/deployment-config/${configId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to update deployment config: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating deployment config:', error);
+    throw error;
+  }
+}
+
+export async function deleteDeploymentConfig(configId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/deployment-config/${configId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to delete deployment config: ${response.status}`);
+    }
+  } catch (error) {
+    console.error('Error deleting deployment config:', error);
+    throw error;
+  }
+}
+
+export async function fetchComponentDeploymentsByProject(projectId: number): Promise<ApiComponentDeployment[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/deployment-config/getByProject/${projectId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch component deployments: ${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching component deployments:', error);
+    throw error;
+  }
+}
+
+// Get all projects
+export async function fetchAllProjects(): Promise<ApiProject[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects/getAllProjects`);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch projects: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    throw error;
+  }
+}
+
+export async function fetchProjectById(projectId: number): Promise<ApiProject> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects/getProjectById/${projectId}`);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch project: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching project:', error);
+    throw error;
+  }
+}
+
+// Get all environments
+export async function fetchAllEnvironments(): Promise<ProjectEnvironmentDTO[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/environments/getAllEnvironments`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch environments: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching environments:', error);
     throw error;
   }
 }

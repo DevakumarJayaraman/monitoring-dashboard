@@ -10,9 +10,10 @@ type ProfileSelectorProps = {
   onChange: (profiles: ServiceProfileKey[]) => void;
   environmentFilter: EnvironmentFilter;
   servicesInstances: ServicesInstance[];
+  configuredProfiles?: string[]; // Add configured profiles from project
 };
 
-export function ProfileSelector({ value, onChange, environmentFilter, servicesInstances }: ProfileSelectorProps): JSX.Element {
+export function ProfileSelector({ value, onChange, environmentFilter, servicesInstances, configuredProfiles }: ProfileSelectorProps): JSX.Element {
   const [availableProfiles, setAvailableProfiles] = useState<string[]>(profileOrder);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -79,11 +80,26 @@ export function ProfileSelector({ value, onChange, environmentFilter, servicesIn
     return filtered;
   }, [availableProfiles, environmentFilter, profileEnvMap]);
   
+  // Filter profiles based on configured profiles
+  const finalFilteredProfiles = useMemo(() => {
+    console.log('ProfileSelector - configuredProfiles:', configuredProfiles);
+    console.log('ProfileSelector - filteredProfiles before final filter:', filteredProfiles);
+
+    if (!configuredProfiles || configuredProfiles.length === 0) {
+      console.log('ProfileSelector - No configured profiles, showing all filtered profiles');
+      return filteredProfiles;
+    }
+    // Always include "all" option, then filter the rest based on configured profiles
+    const result = filteredProfiles.filter(profile => profile === "all" || configuredProfiles.includes(profile));
+    console.log('ProfileSelector - finalFilteredProfiles:', result);
+    return result;
+  }, [filteredProfiles, configuredProfiles]);
+
   const handleToggle = (profile: ServiceProfileKey) => {
     if (profile === "all") {
       // If "all" is clicked, select all filtered profiles (excluding "all" itself)
-      const allFilteredProfiles = filteredProfiles.filter(p => p !== "all") as ServiceProfileKey[];
-      
+      const allFilteredProfiles = finalFilteredProfiles.filter(p => p !== "all") as ServiceProfileKey[];
+
       // If all filtered profiles are already selected, deselect them
       const allSelected = allFilteredProfiles.every(p => value.includes(p));
       
@@ -110,7 +126,7 @@ export function ProfileSelector({ value, onChange, environmentFilter, servicesIn
   const isSelected = (profile: ServiceProfileKey) => {
     if (profile === "all") {
       // "all" is selected if all filtered profiles (excluding "all" itself) are selected
-      const allFilteredProfiles = filteredProfiles.filter(p => p !== "all");
+      const allFilteredProfiles = finalFilteredProfiles.filter(p => p !== "all");
       return allFilteredProfiles.length > 0 && allFilteredProfiles.every(p => value.includes(p));
     }
     return value.includes(profile);
@@ -143,7 +159,7 @@ export function ProfileSelector({ value, onChange, environmentFilter, servicesIn
           role="group"
           aria-label="Service profiles"
         >
-          {filteredProfiles.map((profile) => (
+          {finalFilteredProfiles.map((profile) => (
             <button
               key={profile}
               type="button"
@@ -169,7 +185,7 @@ export function ProfileSelector({ value, onChange, environmentFilter, servicesIn
             }}
           >
             <option value="">{value.length === 0 ? "Select profiles" : `${value.length} selected`}</option>
-            {filteredProfiles.map((profile) => (
+            {finalFilteredProfiles.map((profile) => (
               <option key={profile} value={profile}>
                 {profile} {isSelected(profile as ServiceProfileKey) ? "✓" : ""}
               </option>

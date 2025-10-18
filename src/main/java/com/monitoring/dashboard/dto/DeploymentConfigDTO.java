@@ -5,6 +5,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -12,15 +15,24 @@ import jakarta.validation.constraints.NotBlank;
 public class DeploymentConfigDTO {
     
     private Long configId;
-    private Long serviceId;
+
+    @NotNull(message = "Component ID is required")
+    private Long componentId;
+
+    @NotNull(message = "Infrastructure ID is required")
     private Long infraId;
+
+    @NotBlank(message = "Profile is required")
     private String profile;
     
-    @NotBlank(message = "Resource name is required")
-    private String resourceName;
-    
-    @NotBlank(message = "Limit value is required")
-    private String limitValue;
-    
-    private String unit;
+    private Integer basePort;
+
+    // Deployment parameters as key/value map (will be serialized to BLOB)
+    // For ECS: minPods, maxPods, cpuRequest, cpuLimit, memoryRequest, memoryLimit, targetCpuUtilization
+    // For VM (Linux/Windows): instanceCount, heapSize, threads, jvmOpts, etc.
+    private Map<String, String> deployParams;
+
+    private Boolean enabled;
+
+    private Long version;
 }

@@ -7,8 +7,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -18,7 +16,7 @@ public class ComponentDTO {
     @Schema(description = "Unique identifier for the component", example = "1", accessMode = Schema.AccessMode.READ_ONLY)
     private Long componentId;
     @NotBlank(message = "Component name is required")
-    @Schema(description = "Name of the component", example = "user-component", required = true)
+    @Schema(description = "Name of the component", example = "user-component")
     private String componentName;
     @Schema(description = "Description of the component", example = "Microservice for user management")
     private String description;
@@ -31,8 +29,14 @@ public class ComponentDTO {
     @Schema(description = "Project name this component belongs to")
     private String projectName;
 
-    @Schema(description = "List of deployments for this component")
-    private List<ComponentDeploymentDTO> deployments;
-    @Schema(description = "Total number of deployments", example = "5", accessMode = Schema.AccessMode.READ_ONLY)
-    private Integer totalDeployments;
+    @Schema(description = "Default infrastructure type for this component", example = "linux")
+    private String defaultInfraType;
+
+    @Schema(description = "Default port for this component", example = "8080")
+    private Integer defaultPort;
+
+    @Schema(description = "Total deployment configs associated with this component", example = "2")
+    private Integer totalDeployments = 0;
+
+    // Removed deployments field as ComponentDeploymentDTO is deleted
 }

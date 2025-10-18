@@ -1,6 +1,7 @@
 import { useState, useEffect, type JSX, type FormEvent } from "react";
 import type { InfraDetail } from "../../types/infrastructure.ts";
-import { 
+import type { Project } from "../../types/project.ts";
+import {
   createInfrastructure, 
   updateInfrastructure, 
   fetchDistinctEnvironments,
@@ -12,6 +13,7 @@ interface InfrastructureFormModalProps {
   isOpen: boolean;
   machine: InfraDetail | null; // null for create, InfraDetail for edit
   projectId?: number;
+  selectedProject?: Project; // Add selected project to get configurations
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -20,14 +22,34 @@ export function InfrastructureFormModal({
   isOpen,
   machine,
   projectId,
+  selectedProject, // Destructure selectedProject
   onClose,
   onSuccess,
 }: InfrastructureFormModalProps): JSX.Element | null {
+  // Get configured environments and regions from project
+  const configuredEnvironments = selectedProject?.configuredEnvironments || [];
+  const configuredRegions = selectedProject?.configuredRegions || [];
+
+  // Determine default environment and region based on project config
+  const getDefaultEnvironment = () => {
+    if (configuredEnvironments.length > 0) {
+      return configuredEnvironments[0];
+    }
+    return ''; // Fallback if no configuration
+  };
+
+  const getDefaultRegion = () => {
+    if (configuredRegions.length > 0) {
+      return configuredRegions[0];
+    }
+    return ''; // Fallback if no configuration
+  };
+
   const [formData, setFormData] = useState<InfrastructureCreateDTO>({
-    infraType: 'linux',
+    infraType: '',
     hostname: '',
-    environment: 'DEV',
-    region: 'APAC',
+    environment: getDefaultEnvironment(),
+    region: getDefaultRegion(),
     datacenter: '',
     projectId: projectId,
   });
@@ -45,14 +67,28 @@ export function InfrastructureFormModal({
     const loadMetadata = async () => {
       try {
         setIsFetchingMetadata(true);
-        const [envs, regs] = await Promise.all([
-          fetchDistinctEnvironments(),
-          fetchDistinctRegions(),
-        ]);
-        
-        // Add default values if lists are empty
-        setEnvironments(envs.length > 0 ? envs : ['DEV', 'UAT', 'STAGING', 'PROD', 'COB']);
-        setRegions(regs.length > 0 ? regs : ['APAC', 'NAM', 'EMEA']);
+
+        console.log('InfrastructureFormModal - selectedProject:', selectedProject);
+        console.log('InfrastructureFormModal - configuredEnvironments:', selectedProject?.configuredEnvironments);
+        console.log('InfrastructureFormModal - configuredRegions:', selectedProject?.configuredRegions);
+
+        // If project has configured environments/regions, use those, otherwise fetch all
+        if (selectedProject?.configuredEnvironments && selectedProject?.configuredRegions &&
+            selectedProject.configuredEnvironments.length > 0 && selectedProject.configuredRegions.length > 0) {
+          console.log('Using configured environments and regions from project');
+          setEnvironments(selectedProject.configuredEnvironments);
+          setRegions(selectedProject.configuredRegions);
+        } else {
+          console.log('Fetching all environments and regions from API');
+          const [envs, regs] = await Promise.all([
+            fetchDistinctEnvironments(),
+            fetchDistinctRegions(),
+          ]);
+
+          // Add default values if lists are empty
+          setEnvironments(envs.length > 0 ? envs : ['DEV', 'UAT', 'STAGING', 'PROD', 'COB']);
+          setRegions(regs.length > 0 ? regs : ['APAC', 'NAM', 'EMEA']);
+        }
       } catch (err) {
         console.error('Failed to load metadata:', err);
         // Use defaults if fetch fails
@@ -66,7 +102,7 @@ export function InfrastructureFormModal({
     if (isOpen) {
       loadMetadata();
     }
-  }, [isOpen]);
+  }, [isOpen, selectedProject]);
 
   // Initialize form data when modal opens or machine changes
   useEffect(() => {
@@ -76,7 +112,7 @@ export function InfrastructureFormModal({
         infraType: machine.infraType,
         hostname: machine.machineName,
         environment: machine.environment,
-        region: machine.region || 'APAC',
+        region: machine.region || getDefaultRegion(),
         datacenter: machine.datacenter || '',
         projectId: machine.projectId || projectId,
       });
@@ -85,14 +121,14 @@ export function InfrastructureFormModal({
       setFormData({
         infraType: 'linux',
         hostname: '',
-        environment: 'DEV',
-        region: 'APAC',
+        environment: getDefaultEnvironment(),
+        region: getDefaultRegion(),
         datacenter: '',
         projectId: projectId,
       });
     }
     setError(null);
-  }, [isOpen, machine, projectId]);
+  }, [isOpen, machine, projectId, selectedProject]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();

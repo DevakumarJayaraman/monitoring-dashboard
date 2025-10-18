@@ -33,9 +33,6 @@ public class ProjectService {
     @Autowired
     private RegionRepository regionRepository;
 
-    @Autowired
-    private ComponentDeploymentRepository componentDeploymentRepository;
-
     /**
      * Get all projects from ops_projects table with infrastructure breakdown by environment and type
      */
@@ -460,31 +457,6 @@ public class ProjectService {
                 String.format("Cannot delete mapping %s-%s. There are %d infrastructure item(s) associated with this environment/region mapping. Please remove or reassign them first.",
                     envCode, regionCode, associatedInfra.size())
             );
-        }
-
-        // Validate: Check if there are any component deployments using profiles from this mapping
-        List<String> profileCodes = mappingToRemove.getProfiles().stream()
-            .map(ProjectProfiles::getProfileCode)
-            .collect(Collectors.toList());
-
-        if (!profileCodes.isEmpty()) {
-            List<ComponentDeployment> associatedDeployments = new ArrayList<>();
-            for (String profileCode : profileCodes) {
-                List<ComponentDeployment> deploymentsForProfile = componentDeploymentRepository.findByProfile(profileCode);
-                // Filter to only include deployments for this project
-                deploymentsForProfile.stream()
-                    .filter(cd -> cd.getComponent().getProject().getProjectId().equals(projectId))
-                    .forEach(associatedDeployments::add);
-            }
-
-            if (!associatedDeployments.isEmpty()) {
-                String envCode = mappingToRemove.getEnvironment().getEnvCode();
-                String regionCode = mappingToRemove.getRegion().getRegionCode();
-                throw new RuntimeException(
-                    String.format("Cannot delete mapping %s-%s. There are %d component deployment(s) using profiles from this mapping. Please remove or reassign them first.",
-                        envCode, regionCode, associatedDeployments.size())
-                );
-            }
         }
 
         project.removeEnvironmentMapping(mappingToRemove);

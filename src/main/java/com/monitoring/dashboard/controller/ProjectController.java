@@ -36,7 +36,7 @@ public class ProjectController {
     /**
      * Get all projects with aggregated statistics
      */
-    @GetMapping
+    @GetMapping("/getAllProjects")
     public ResponseEntity<List<ProjectSummaryDTO>> getAllProjects() {
         List<ProjectSummaryDTO> projects = projectService.getAllProjectSummaries();
         return ResponseEntity.ok(projects);
@@ -45,7 +45,7 @@ public class ProjectController {
     /**
      * Get a specific project by ID
      */
-    @GetMapping("/{id}")
+    @GetMapping("/getProjectById/{id}")
     public ResponseEntity<ProjectSummaryDTO> getProjectById(@PathVariable Long id) {
         // For now, return from the list
         List<ProjectSummaryDTO> projects = projectService.getAllProjectSummaries();
@@ -64,7 +64,7 @@ public class ProjectController {
     /**
      * Create a new project
      */
-    @PostMapping
+    @PostMapping("/createProject")
     public ResponseEntity<?> createProject(@RequestBody ProjectCreateDTO dto) {
         try {
             Project project = projectService.createProject(dto);
@@ -79,7 +79,7 @@ public class ProjectController {
     /**
      * Update an existing project
      */
-    @PutMapping("/{id}")
+    @PutMapping("/updateProject/{id}")
     public ResponseEntity<?> updateProject(@PathVariable Long id, @RequestBody ProjectCreateDTO dto) {
         try {
             Project project = projectService.updateProject(id, dto);
@@ -94,7 +94,7 @@ public class ProjectController {
     /**
      * Delete a project
      */
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/deleteProject/{id}")
     public ResponseEntity<Void> deleteProject(@PathVariable Long id) {
         try {
             projectService.deleteProject(id);
@@ -108,7 +108,7 @@ public class ProjectController {
      * Retire a project (set active_flag to false)
      * Only allowed if project has no environment mappings
      */
-    @PostMapping("/{id}/retire")
+    @PostMapping("/retireProject/{id}")
     public ResponseEntity<?> retireProject(@PathVariable Long id) {
         try {
             projectService.retireProject(id);
@@ -122,7 +122,7 @@ public class ProjectController {
     /**
      * Get environment/region mappings for a specific project
      */
-    @GetMapping("/{id}/mappings")
+    @GetMapping("/getProjectMappings/{id}")
     public ResponseEntity<List<ProjectEnvironmentMappingDetailDTO>> getProjectMappings(@PathVariable Long id) {
         try {
             List<ProjectEnvironmentMappingDetailDTO> mappings = projectService.getProjectMappings(id);
@@ -135,7 +135,7 @@ public class ProjectController {
     /**
      * Save a single environment/region mapping for a project
      */
-    @PostMapping("/{id}/mappings")
+    @PostMapping("/saveMappingForProject/{id}")
     public ResponseEntity<?> saveMappingForProject(@PathVariable Long id, @RequestBody ProjectCreateDTO.ProjectEnvironmentMappingDTO mappingDTO) {
         try {
             ProjectEnvironmentMappingDetailDTO savedMapping = projectService.saveMappingForProject(id, mappingDTO);
@@ -149,7 +149,7 @@ public class ProjectController {
     /**
      * Delete a single environment/region mapping
      */
-    @DeleteMapping("/{projectId}/mappings/{perId}")
+    @DeleteMapping("/deleteMappingForProject/{projectId}/{perId}")
     public ResponseEntity<?> deleteMappingForProject(@PathVariable Long projectId, @PathVariable Long perId) {
         try {
             projectService.deleteMappingForProject(projectId, perId);
@@ -163,7 +163,7 @@ public class ProjectController {
     /**
      * Get all environments
      */
-    @GetMapping("/metadata/environments")
+    @GetMapping("/getAllEnvironments")
     public ResponseEntity<List<Environment>> getAllEnvironments() {
         List<Environment> environments = environmentRepository.findAll();
         return ResponseEntity.ok(environments);
@@ -172,7 +172,7 @@ public class ProjectController {
     /**
      * Get all regions
      */
-    @GetMapping("/metadata/regions")
+    @GetMapping("/getAllRegions")
     public ResponseEntity<List<Region>> getAllRegions() {
         List<Region> regions = regionRepository.findAll();
         return ResponseEntity.ok(regions);

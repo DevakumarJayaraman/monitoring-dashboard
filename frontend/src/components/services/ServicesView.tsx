@@ -17,12 +17,13 @@ import type {
   ServicesInstance,
   ServiceStatus,
 } from "../../types/infrastructure.ts";
-import { 
-  fetchAllServiceInstances, 
+import {
+  fetchAllServiceInstances,
   fetchServiceInstancesByProject,
-  startServiceInstances, 
+  fetchComponentsByProject,
+  startServiceInstances,
   stopServiceInstances,
-  type ServiceActionResponse 
+  type ServiceActionResponse
 } from "../../services/api.ts";
 import type { Project } from "../../types/project.ts";
 
@@ -61,10 +62,12 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedServiceKey, setSelectedServiceKey] = useState<string | null>(null);
   const [servicesInstances, setServicesInstances] = useState<ServicesInstance[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [configuredServices, setConfiguredServices] = useState<Map<string, { summary: string; profiles: Set<string> }>>(new Map());
+  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isActionInProgress, setIsActionInProgress] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   
   // Modal state
   const [modalState, setModalState] = useState<{
@@ -81,7 +84,12 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
     serviceNames: []
   });
 
-  // Load services from backend
+  const serviceSummaryMap = useMemo(
+    () => new Map<string, string>(Object.entries(serviceSummaryByName)),
+    []
+  );
+
+  // Load services from backend - fetch both components and service instances
   const loadServices = useCallback(async (showRefreshIndicator = false) => {
     try {
       if (showRefreshIndicator) {
@@ -91,11 +99,16 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
       }
       setError(null);
       
-      // Fetch services filtered by project if one is selected
-      const apiInstances = selectedProject
-        ? await fetchServiceInstancesByProject(parseInt(selectedProject.id))
-        : await fetchAllServiceInstances();
-      
+      // Fetch both components and service instances
+      const [components, apiInstances] = await Promise.all([
+        selectedProject
+          ? fetchComponentsByProject(parseInt(selectedProject.id))
+          : [],
+        selectedProject
+          ? fetchServiceInstancesByProject(parseInt(selectedProject.id))
+          : fetchAllServiceInstances(),
+      ]);
+
       // Convert API instances to frontend format
       const convertedInstances: ServicesInstance[] = apiInstances.map((api) => ({
         id: api.id,
@@ -109,27 +122,86 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
         version: api.version,
         logURL: api.logURL,
         metricsURL: api.metricsURL,
-        status: api.status,
+        status: api.status
       }));
-      
-      setServicesInstances(convertedInstances);
+
+      // Build map of all services from components
+      const configuredServicesMap = new Map<string, { summary: string; profiles: Set<string>; deploymentCount: number }>();
+
+      // Add services from components
+      components.forEach(component => {
+        const profiles = new Set<string>();
+
+        // Extract profiles from deployment configs if available
+        if (component.deploymentConfigs && component.deploymentConfigs.length > 0) {
+          component.deploymentConfigs.forEach(config => {
+            if (config.profile) {
+              profiles.add(config.profile);
+            }
+          });
+        }
+
+        // If no profiles found, add a default one
+        if (profiles.size === 0) {
+          profiles.add('default');
+        }
+
+        configuredServicesMap.set(component.componentName, {
+          summary: component.description || serviceSummaryMap.get(component.componentName) || `${component.componentName} service`,
+          profiles,
+          deploymentCount: component.deploymentConfigs?.length || 0
+        });
+      });
+
+      // Also add services from running instances (in case they're not in components yet)
+      convertedInstances.forEach(instance => {
+        if (!configuredServicesMap.has(instance.serviceName)) {
+          configuredServicesMap.set(instance.serviceName, {
+            summary: serviceSummaryMap.get(instance.serviceName) || `${instance.serviceName} service`,
+            profiles: new Set([instance.profile]),
+            deploymentCount: 0
+          });
+        } else {
+          // Add profile from instance if not already present
+          configuredServicesMap.get(instance.serviceName)!.profiles.add(instance.profile);
+        }
+      });
+
+      setConfiguredServices(configuredServicesMap);
+      setServicesInstances(convertedInstances); // Set actual service instances
+      setActiveProfiles(prev => (prev.length === 0 ? ["all"] : prev));
+      setHasLoaded(true);
     } catch (err) {
       console.error('Failed to load services:', err);
       setError(err instanceof Error ? err.message : 'Failed to load services');
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (showRefreshIndicator) {
+        setIsRefreshing(false);
+      } else {
+        setIsLoading(false);
+      }
     }
-  }, [selectedProject]);
+  }, [selectedProject, serviceSummaryMap]);
 
   useEffect(() => {
-    loadServices();
-  }, [loadServices]);
-
-  useEffect(() => {
-    if (!refreshKey) return;
+    if (!refreshKey || !hasLoaded) return;
     loadServices(true);
-  }, [refreshKey, loadServices]);
+  }, [refreshKey, hasLoaded, loadServices]);
+
+  useEffect(() => {
+    setServicesInstances([]);
+    setConfiguredServices(new Map());
+    setActiveProfiles([]);
+    setEnvironmentFilter('ALL');
+    setSelectedInstances({});
+    setSelectedServiceKey(null);
+    setSearchQuery("");
+    setHasLoaded(false);
+    setError(null);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    setIsActionInProgress(false);
+  }, [selectedProject]);
 
   const environmentFilteredInstances = useMemo(() => {
     if (environmentFilter === 'ALL') {
@@ -146,17 +218,33 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
     return servicesInstances.filter((instance) => (instance.envType ?? '').toUpperCase() === environmentFilter);
   }, [servicesInstances, environmentFilter]);
 
-  const serviceSummaryMap = useMemo(
-    () => new Map<string, string>(Object.entries(serviceSummaryByName)),
-    []
-  );
-
   const serviceVariantsByName = useMemo(() => {
     const map = new Map<string, Map<NonAllProfile, ServiceVariant>>();
 
+    // First, populate with configured services (even if no instances)
+    configuredServices.forEach((config, serviceName) => {
+      config.profiles.forEach(profile => {
+        if (profile === "all") return;
+        const profileKey = profile as NonAllProfile;
+
+        if (!map.has(serviceName)) {
+          map.set(serviceName, new Map());
+        }
+        const profileMap = map.get(serviceName)!;
+        if (!profileMap.has(profileKey)) {
+          profileMap.set(profileKey, {
+            summary: config.summary,
+            instances: [],
+          });
+        }
+      });
+    });
+
+    // Then add actual instances to the corresponding services
     environmentFilteredInstances.forEach((instance) => {
       if (instance.profile === "all") return;
       const profileKey = instance.profile as NonAllProfile;
+
       if (!map.has(instance.serviceName)) {
         map.set(instance.serviceName, new Map());
       }
@@ -177,7 +265,7 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
     });
 
     return map;
-  }, [serviceSummaryMap, environmentFilteredInstances]);
+  }, [serviceSummaryMap, environmentFilteredInstances, configuredServices]);
 
   const servicesByProfile = useMemo(() => {
     const result = new Map<ServiceProfileKey, Map<string, ServiceVariant>>();
@@ -585,7 +673,39 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
   if (error) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-red-500">Error: {error}</div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="text-red-500">Error: {error}</div>
+          <button
+            type="button"
+            onClick={() => loadServices(false)}
+            className="rounded-lg border border-red-400 px-4 py-2 text-sm font-medium text-red-200 transition hover:bg-red-500/10"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasLoaded) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-4 text-center text-slate-300">
+        <div>
+          <p className="text-lg font-semibold text-slate-100">Service data not loaded</p>
+          <p className="mt-1 text-sm text-slate-400">
+            Load ops service instances and deployment mappings on demand to keep the dashboard responsive.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadServices(false)}
+          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Load Service Data
+        </button>
       </div>
     );
   }
@@ -621,6 +741,7 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
           onChange={setActiveProfiles}
           environmentFilter={environmentFilter}
           servicesInstances={servicesInstances}
+          configuredProfiles={selectedProject?.configuredProfiles}
         />
       </div>
       
@@ -896,105 +1017,118 @@ export function ServicesView({ selectedProject, refreshKey }: ServicesViewProps)
                         ) : null;
                       })()}
 
-                      <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                        {service.instances.map((instance) => {
-                          const status = normaliseStatus(instance);
-                          const selection = selectedInstances[serviceKey] ?? [];
-                          const isInstanceSelected = selection.includes(instance.id);
+                      {service.instances.length === 0 ? (
+                        // Show message when service has no instances
+                        <div className="rounded-lg border border-slate-700 bg-slate-800/30 px-4 py-6 text-center">
+                          <div className="mb-2 text-slate-400">
+                            <svg className="mx-auto h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-sm text-slate-400">No instances running</p>
+                          <p className="text-xs text-slate-500 mt-1">Service is configured but no instances are currently deployed</p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                          {service.instances.map((instance) => {
+                            const status = normaliseStatus(instance);
+                            const selection = selectedInstances[serviceKey] ?? [];
+                            const isInstanceSelected = selection.includes(instance.id);
 
-                          return (
-                            <div
-                              key={instance.id}
-                              className={`group rounded-lg border px-3 py-2 transition cursor-pointer ${
-                                isInstanceSelected
-                                  ? "border-emerald-400/70 bg-emerald-900/40 shadow-inner ring-1 ring-emerald-400/30"
-                                  : "border-slate-800 bg-slate-900/70 hover:border-emerald-300/40 hover:bg-slate-900/80"
-                              }`}
-                              role="checkbox"
-                              aria-checked={isInstanceSelected}
-                              tabIndex={0}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleInstanceSelected(serviceKey, instance.id);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === " " || event.key === "Enter") {
-                                  event.preventDefault();
+                            return (
+                              <div
+                                key={instance.id}
+                                className={`group rounded-lg border px-3 py-2 transition cursor-pointer ${
+                                  isInstanceSelected
+                                    ? "border-emerald-400/70 bg-emerald-900/40 shadow-inner ring-1 ring-emerald-400/30"
+                                    : "border-slate-800 bg-slate-900/70 hover:border-emerald-300/40 hover:bg-slate-900/80"
+                                }`}
+                                role="checkbox"
+                                aria-checked={isInstanceSelected}
+                                tabIndex={0}
+                                onClick={(event) => {
+                                  event.stopPropagation();
                                   toggleInstanceSelected(serviceKey, instance.id);
-                                }
-                              }}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1 space-y-1">
-                                  <div className="flex items-center gap-1.5 text-xs">
-                                    <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
-                                      {instance.profile}
-                                    </span>
-                                    <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
-                                      v{instance.version}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="text-sm font-medium text-slate-100">
-                                      <span className="font-semibold">{instance.machineName}</span>
-                                      <span className="text-slate-500">:{instance.Port}</span>
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === " " || event.key === "Enter") {
+                                    event.preventDefault();
+                                    toggleInstanceSelected(serviceKey, instance.id);
+                                  }
+                                }}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex items-center gap-1.5 text-xs">
+                                      <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
+                                        {instance.profile}
+                                      </span>
+                                      <span className="rounded-full border border-slate-600 bg-slate-800/70 px-2 py-0.5 text-slate-200 text-[10px]">
+                                        v{instance.version}
+                                      </span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      className="inline-flex h-5 w-5 items-center justify-center rounded transition hover:bg-slate-800"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        window.open(instance.metricsURL, "_blank");
-                                      }}
-                                      title="View Health Check"
-                                    >
-                                      <svg
-                                        className="h-4 w-4 text-emerald-400 hover:text-emerald-300"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-sm font-medium text-slate-100">
+                                        <span className="font-semibold">{instance.machineName}</span>
+                                        <span className="text-slate-500">:{instance.Port}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="inline-flex h-5 w-5 items-center justify-center rounded transition hover:bg-slate-800"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          window.open(instance.metricsURL, "_blank");
+                                        }}
+                                        title="View Health Check"
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                                        />
-                                      </svg>
-                                    </button>
+                                        <svg
+                                          className="h-4 w-4 text-emerald-400 hover:text-emerald-300"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                                          />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <ServiceStatusBadge status={status} />
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
+                                  <span className="truncate">Uptime {formatUptime(instance.uptime)}</span>
+                                  <div className="flex flex-shrink-0 gap-2 text-xs font-semibold text-emerald-300">
+                                    <a
+                                      className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                      href={instance.logURL}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={(event) => event.stopPropagation()}
+                                      title="View Logs"
+                                    >
+                                      Logs ↗
+                                    </a>
+                                    <a
+                                      className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
+                                      href={instance.metricsURL}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={(event) => event.stopPropagation()}
+                                      title="View Metrics"
+                                    >
+                                      Metrics ↗
+                                    </a>
                                   </div>
                                 </div>
-                                <ServiceStatusBadge status={status} />
                               </div>
-                              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
-                                <span className="truncate">Uptime {formatUptime(instance.uptime)}</span>
-                                <div className="flex flex-shrink-0 gap-2 text-xs font-semibold text-emerald-300">
-                                  <a
-                                    className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
-                                    href={instance.logURL}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={(event) => event.stopPropagation()}
-                                    title="View Logs"
-                                  >
-                                    Logs ↗
-                                  </a>
-                                  <a
-                                    className="inline-flex items-center gap-0.5 transition hover:text-emerald-200"
-                                    href={instance.metricsURL}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={(event) => event.stopPropagation()}
-                                    title="View Metrics"
-                                  >
-                                    Metrics ↗
-                                  </a>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </Card>

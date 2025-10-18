@@ -6,11 +6,14 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "ops_deployment_configs",
        uniqueConstraints = @UniqueConstraint(
-           name = "uk_component_infra_profile_resource",
-           columnNames = {"componentId", "infraId", "profile", "resourceName"}
+           name = "uk_deployment_config_component_infra",
+           columnNames = {"componentId", "infraId"}
        ))
 @Data
 @NoArgsConstructor
@@ -28,23 +31,30 @@ public class DeploymentConfig {
     private Component component;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "infraId")
+    @JoinColumn(name = "infraId", nullable = false)
     @JsonIgnore
     private Infrastructure infrastructure;
 
-    @Column(name = "profile")
-    private String profile;
+    @Column(name = "basePort")
+    private Integer basePort; // Starting port number for instances
 
-    @Column(name = "resourceName", nullable = false)
-    private String resourceName;  // cpu, memory, threads
+    @Lob
+    @Column(name = "deployParams", columnDefinition = "BLOB")
+    private byte[] deployParams; // JSON blob storing deployment parameters including:
+                                  // For ECS: minPods, maxPods, cpuRequest, cpuLimit, memoryRequest, memoryLimit
+                                  // For VM: instanceCount, heapSize, threads, etc.
 
-    @Column(name = "limitValue", nullable = false)
-    private String limitValue;
-
-    @Column(name = "unit")
-    private String unit;
+    @Column(name = "enabled", nullable = false)
+    private Boolean enabled = true;
 
     @Version
     @Column(name = "version", nullable = false)
     private Long version = 0L;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "profile_id")
+    private ProjectProfiles profile;
+
+    @OneToMany(mappedBy = "deploymentConfig", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ServiceInstance> serviceInstances = new ArrayList<>();
 }

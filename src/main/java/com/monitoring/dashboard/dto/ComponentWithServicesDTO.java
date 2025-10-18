@@ -19,8 +19,11 @@ public class ComponentWithServicesDTO {
     private String module;
     private Long projectId;
     private String projectName;
+    private String defaultInfraType;
+    private Integer defaultPort;
     private Integer serviceInstanceCount;
     private List<ServiceInstanceDTO> serviceInstances;
+    private List<com.monitoring.dashboard.dto.DeploymentConfigDTO> deploymentConfigs;
 
     @Data
     @NoArgsConstructor
@@ -39,4 +42,3 @@ public class ComponentWithServicesDTO {
         private String metricsUrl;
     }
 }
-

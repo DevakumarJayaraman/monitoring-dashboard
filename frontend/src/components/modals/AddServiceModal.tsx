@@ -13,18 +13,32 @@ export interface ComponentFormData {
   module?: string;
   description?: string;
   projectId: number;
+  defaultInfraType?: string;
+  defaultPort?: number;
+  deployments?: Array<{
+    infraId: number;
+    profile: string;
+    port?: number;
+    dynamicParams?: Record<string, string>;
+    environment?: string;
+    region?: string;
+  }>;
 }
 
 type ComponentFormState = {
   componentName: string;
   module: string;
   description: string;
+  defaultInfraType: string;
+  defaultPort: string;
 };
 
 const defaultState: ComponentFormState = {
   componentName: "",
   module: "",
   description: "",
+  defaultInfraType: "",
+  defaultPort: "",
 };
 
 export function AddServiceModal({ isOpen, onClose, onSave, projectId, projectName }: AddServiceModalProps) {
@@ -39,7 +53,7 @@ export function AddServiceModal({ isOpen, onClose, onSave, projectId, projectNam
     }
   }, [isOpen]);
 
-  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = event.currentTarget;
     setFormState(prev => ({ ...prev, [name]: value }));
   };
@@ -67,6 +81,8 @@ export function AddServiceModal({ isOpen, onClose, onSave, projectId, projectNam
       module: formState.module.trim() || undefined,
       description: formState.description.trim() || undefined,
       projectId,
+      defaultInfraType: formState.defaultInfraType.trim() || undefined,
+      defaultPort: formState.defaultPort.trim() ? Number(formState.defaultPort.trim()) : undefined,
     };
 
     try {
@@ -87,7 +103,7 @@ export function AddServiceModal({ isOpen, onClose, onSave, projectId, projectNam
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
+      <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto m-4">
         <div className="flex items-center justify-between border-b border-slate-700 p-6">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-blue-500/20 p-2">
@@ -170,6 +186,49 @@ export function AddServiceModal({ isOpen, onClose, onSave, projectId, projectNam
                 className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
                 placeholder="Short summary of what this service component is responsible for."
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="defaultInfraType" className="block text-sm font-medium text-slate-300 mb-2">
+                  Hosted On <span className="text-rose-400">*</span>
+                </label>
+                <select
+                  id="defaultInfraType"
+                  name="defaultInfraType"
+                  value={formState.defaultInfraType}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                  required
+                >
+                  <option value="">Select hosted platform</option>
+                  <option value="linux">linux</option>
+                  <option value="windows">windows</option>
+                  <option value="ecs">ecs</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="defaultPort" className="block text-sm font-medium text-slate-300 mb-2">
+                  Default Port <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  id="defaultPort"
+                  name="defaultPort"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={formState.defaultPort}
+                  onChange={handleChange}
+                  required
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  placeholder="e.g., 8080"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-700/70 bg-slate-900/30 px-4 py-3 text-xs text-slate-400">
+              Deployment mappings can be configured later from the Deployment Config screen once the component is saved.
             </div>
           </div>
 

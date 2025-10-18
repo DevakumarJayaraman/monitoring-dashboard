@@ -29,7 +29,7 @@ public class AccessController {
      * @param env  the environment code
      * @return a map containing the role, environment and permitted function codes
      */
-    @GetMapping("/{role}/{env}")
+    @GetMapping("/getPermissions/{role}/{env}")
     public Map<String, Object> getPermissions(@PathVariable String role, @PathVariable String env) {
         List<String> permissions = accessService.getPermissions(role, env);
         Map<String, Object> response = new HashMap<>();

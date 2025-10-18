@@ -24,101 +24,101 @@ public class InfrastructureController {
 
     private final InfrastructureService infrastructureService;
 
-    @GetMapping
+    @GetMapping("/getAllInfrastructure")
     @Operation(summary = "Get all infrastructure", description = "Returns a list of all infrastructure")
     public ResponseEntity<List<InfrastructureDTO>> getAllInfrastructure() {
-        log.info("GET /api/infrastructure - Get all infrastructure");
+        log.info("GET /api/infrastructure/getAllInfrastructure - Get all infrastructure");
         return ResponseEntity.ok(infrastructureService.getAllInfrastructure());
     }
 
-    @GetMapping("/details")
-    @Operation(summary = "Get all infrastructure with detailed metrics", 
+    @GetMapping("/getAllInfrastructureDetails")
+    @Operation(summary = "Get all infrastructure with detailed metrics",
                description = "Returns a list of all infrastructure with complete VM or ECS metrics")
     public ResponseEntity<List<InfraDetailDTO>> getAllInfrastructureDetails() {
-        log.info("GET /api/infrastructure/details - Get all infrastructure with detailed metrics");
+        log.info("GET /api/infrastructure/getAllInfrastructureDetails - Get all infrastructure with detailed metrics");
         return ResponseEntity.ok(infrastructureService.getAllInfrastructureDetails());
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/getInfrastructureById/{id}")
     @Operation(summary = "Get infrastructure by ID", description = "Returns infrastructure details by ID")
     public ResponseEntity<InfrastructureDTO> getInfrastructureById(@PathVariable Long id) {
-        log.info("GET /api/infrastructure/{} - Get infrastructure by id", id);
+        log.info("GET /api/infrastructure/getInfrastructureById/{} - Get infrastructure by id", id);
         return ResponseEntity.ok(infrastructureService.getInfrastructureById(id));
     }
 
-    @GetMapping("/details/{id}")
-    @Operation(summary = "Get infrastructure details by ID", 
+    @GetMapping("/getInfrastructureDetailsById/{id}")
+    @Operation(summary = "Get infrastructure details by ID",
                description = "Returns infrastructure with complete metrics by ID")
     public ResponseEntity<InfraDetailDTO> getInfrastructureDetailsById(@PathVariable Long id) {
-        log.info("GET /api/infrastructure/details/{} - Get infrastructure details by id", id);
+        log.info("GET /api/infrastructure/getInfrastructureDetailsById/{} - Get infrastructure details by id", id);
         return ResponseEntity.ok(infrastructureService.getInfrastructureDetailsById(id));
     }
 
-    @GetMapping("/details/type/{type}")
-    @Operation(summary = "Get infrastructure details by type", 
+    @GetMapping("/getInfrastructureDetailsByType/{type}")
+    @Operation(summary = "Get infrastructure details by type",
                description = "Returns infrastructure list with complete metrics filtered by type (ecs/linux/windows)")
     public ResponseEntity<List<InfraDetailDTO>> getInfrastructureDetailsByType(@PathVariable String type) {
-        log.info("GET /api/infrastructure/details/type/{} - Get infrastructure details by type", type);
+        log.info("GET /api/infrastructure/getInfrastructureDetailsByType/{} - Get infrastructure details by type", type);
         return ResponseEntity.ok(infrastructureService.getInfrastructureDetailsByType(type));
     }
 
-    @GetMapping("/details/project/{projectId}")
-    @Operation(summary = "Get infrastructure details by project", 
+    @GetMapping("/getInfrastructureDetailsByProject/{projectId}")
+    @Operation(summary = "Get infrastructure details by project",
                description = "Returns infrastructure list with complete metrics filtered by project ID")
     public ResponseEntity<List<InfraDetailDTO>> getInfrastructureDetailsByProject(@PathVariable Long projectId) {
-        log.info("GET /api/infrastructure/details/project/{} - Get infrastructure details by project", projectId);
+        log.info("GET /api/infrastructure/getInfrastructureDetailsByProject/{} - Get infrastructure details by project", projectId);
         return ResponseEntity.ok(infrastructureService.getInfrastructureDetailsByProject(projectId));
     }
 
-    @GetMapping("/name/{name}")
+    @GetMapping("/getInfrastructureByName/{name}")
     public ResponseEntity<InfrastructureDTO> getInfrastructureByName(@PathVariable String name) {
-        log.info("GET /api/infrastructure/name/{} - Get infrastructure by name", name);
+        log.info("GET /api/infrastructure/getInfrastructureByName/{} - Get infrastructure by name", name);
         return ResponseEntity.ok(infrastructureService.getInfrastructureByName(name));
     }
 
-    @GetMapping("/type/{type}")
+    @GetMapping("/getInfrastructureByType/{type}")
     public ResponseEntity<List<InfrastructureDTO>> getInfrastructureByType(@PathVariable String type) {
-        log.info("GET /api/infrastructure/type/{} - Get infrastructure by type", type);
+        log.info("GET /api/infrastructure/getInfrastructureByType/{} - Get infrastructure by type", type);
         return ResponseEntity.ok(infrastructureService.getInfrastructureByType(type));
     }
 
-    @GetMapping("/environment/{environment}")
+    @GetMapping("/getInfrastructureByEnvironment/{environment}")
     public ResponseEntity<List<InfrastructureDTO>> getInfrastructureByEnvironment(@PathVariable String environment) {
-        log.info("GET /api/infrastructure/environment/{} - Get infrastructure by environment", environment);
+        log.info("GET /api/infrastructure/getInfrastructureByEnvironment/{} - Get infrastructure by environment", environment);
         return ResponseEntity.ok(infrastructureService.getInfrastructureByEnvironment(environment));
     }
 
-    @GetMapping("/metadata/environments")
+    @GetMapping("/getDistinctEnvironments")
     @Operation(summary = "Get distinct environments", description = "Returns a list of distinct environment values")
     public ResponseEntity<List<String>> getDistinctEnvironments() {
-        log.info("GET /api/infrastructure/metadata/environments - Get distinct environments");
+        log.info("GET /api/infrastructure/getDistinctEnvironments - Get distinct environments");
         return ResponseEntity.ok(infrastructureService.getDistinctEnvironments());
     }
 
-    @GetMapping("/metadata/regions")
+    @GetMapping("/getDistinctRegions")
     @Operation(summary = "Get distinct regions", description = "Returns a list of distinct region values")
     public ResponseEntity<List<String>> getDistinctRegions() {
-        log.info("GET /api/infrastructure/metadata/regions - Get distinct regions");
+        log.info("GET /api/infrastructure/getDistinctRegions - Get distinct regions");
         return ResponseEntity.ok(infrastructureService.getDistinctRegions());
     }
 
-    @PostMapping
+    @PostMapping("/createInfrastructure")
     public ResponseEntity<InfrastructureDTO> createInfrastructure(@Valid @RequestBody InfrastructureDTO dto) {
-        log.info("POST /api/infrastructure - Create infrastructure: {}", dto.getHostname());
+        log.info("POST /api/infrastructure/createInfrastructure - Create infrastructure: {}", dto.getHostname());
         InfrastructureDTO created = infrastructureService.createInfrastructure(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/updateInfrastructure/{id}")
     public ResponseEntity<InfrastructureDTO> updateInfrastructure(@PathVariable Long id, @Valid @RequestBody InfrastructureDTO dto) {
-        log.info("PUT /api/infrastructure/{} - Update infrastructure", id);
+        log.info("PUT /api/infrastructure/updateInfrastructure/{} - Update infrastructure", id);
         InfrastructureDTO updated = infrastructureService.updateInfrastructure(id, dto);
         return ResponseEntity.ok(updated);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/deleteInfrastructure/{id}")
     public ResponseEntity<Void> deleteInfrastructure(@PathVariable Long id) {
-        log.info("DELETE /api/infrastructure/{} - Delete infrastructure", id);
+        log.info("DELETE /api/infrastructure/deleteInfrastructure/{} - Delete infrastructure", id);
         infrastructureService.deleteInfrastructure(id);
         return ResponseEntity.noContent().build();
     }

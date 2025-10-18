@@ -1,13 +1,18 @@
 package com.monitoring.dashboard.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 /**
  * Entity representing a service instance deployed on infrastructure.
  * Each instance is a running deployment of a microservice on a specific machine/container.
+ * Entries are created based on ops_deployment_configs, and runtime data (status, uptime, version)
+ * is populated later by runtime agents.
  */
 @Entity
 @Table(name = "ops_service_instances")
@@ -17,8 +22,17 @@ import lombok.NoArgsConstructor;
 public class ServiceInstance {
     
     @Id
-    @Column(name = "instanceId", length = 50)
+    @Column(name = "instanceId", length = 150)
     private String instanceId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+        name = "configId",
+        nullable = false,
+        foreignKey = @ForeignKey(name = "fk_service_instance_deployment_config")
+    )
+    @JsonIgnore
+    private DeploymentConfig deploymentConfig;
 
     @Column(name = "serviceName", nullable = false, length = 100)
     private String serviceName;
@@ -32,11 +46,12 @@ public class ServiceInstance {
     @Column(name = "profile", nullable = false, length = 50)
     private String profile; // apacqa, apacuat, emeaqa, etc.
 
-    @Column(name = "version", length = 20)
-    private String version;
-
     @Column(name = "port")
     private Integer port;
+
+    // Runtime data populated by agents
+    @Column(name = "version", length = 20)
+    private String version;
 
     @Column(name = "uptimeSeconds")
     private Integer uptimeSeconds;
@@ -44,15 +59,11 @@ public class ServiceInstance {
     @Column(name = "status", length = 20)
     private String status; // running, degraded, restarting, starting, stopping, stopped
 
-    @Column(name = "logUrl", length = 500)
-    private String logUrl;
+    @Column(name = "deployedAt")
+    private LocalDateTime deployedAt;
 
-    @Column(name = "metricsUrl", length = 500)
-    private String metricsUrl;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "componentId")
-    private Component component;
+    @Column(name = "lastUpdated")
+    private LocalDateTime lastUpdated;
 
     /**
      * Version field for JPA optimistic locking.

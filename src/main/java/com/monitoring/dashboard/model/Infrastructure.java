@@ -58,5 +58,6 @@ public class Infrastructure {
     private List<InfraMetrics> metrics = new ArrayList<>();
 
     @OneToMany(mappedBy = "infrastructure", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<ComponentDeployment> componentDeployments = new ArrayList<>();
+    @JsonIgnore
+    private List<DeploymentConfig> deploymentConfigs = new ArrayList<>();
 }
